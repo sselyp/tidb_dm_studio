@@ -673,8 +673,22 @@ components:
     TaskStatusData:
       type: object
       properties:
-        state: { type: string, enum: [new, running, paused, stopped, finished, failed] }
-        stage: { type: string }
+        state:
+          type: string
+          enum: [new, running, paused, stopped, finished, failed]
+          description: >-
+            平台状态。DM 原生仅 Stopped/Running/Finished，输入 = native + 持久化 lastOp + lastError，
+            唯一推导见 x-dm-compat.taskStageMapping.derivation：人工意图优先（lastOp==stop|pause 先判，
+            再看 lastError）。paused/stopped 非对称、不合并。
+        stage:
+          type: string
+          description: DM 原生 TaskStage 透传（大写：Stopped/Running/Finished）。
+        nativeState:
+          type: string
+          enum: [Stopped, Running, Finished]
+          description: >-
+            DM 原生 TaskStage 的显式核对字段（与 stage 同值，大写原样透传），
+            供按 native 值断言/排障，避免用平台 state 反推。
         progress: { type: number, minimum: 0, maximum: 1 }
         lag: { type: integer }
         lastError: { type: [string, "null"] }
@@ -691,7 +705,8 @@ components:
       properties:
         name: { type: string }
         state: { type: string, enum: [new, running, paused, stopped, finished, failed] }
-        stage: { type: string }
+        stage: { type: string, description: DM 原生 TaskStage 透传（大写）。 }
+        nativeState: { type: string, enum: [Stopped, Running, Finished], description: 与 stage 同值的 DM 原生核对字段。 }
         lag: { type: integer }
         sourceCount: { type: integer }
     DataSource:
@@ -877,22 +892,31 @@ x-dm-compat:
   taskStageMapping:
     dmEnum: [Stopped, Running, Finished]
     platformState: [new, running, paused, stopped, finished, failed]
+    downlink:
+      running: start-task
+      paused: pause-task
+      stopped: stop-task
+    uplink:
+      Running: running
+      Finished: finished
+      Stopped: by-last-op-and-error
+    derivation:
+      - { platformState: new,      native: "无该任务", condition: "平台已建、从未下发" }
+      - { platformState: running,  native: Running,   condition: "—" }
+      - { platformState: finished, native: Finished,  condition: "—" }
+      - { platformState: failed,   native: Stopped,   condition: "lastOp ∉ {pause,stop} 且 lastError != null" }
+      - { platformState: paused,   native: Stopped,   condition: "lastOp == pause" }
+      - { platformState: stopped,  native: Stopped,   condition: "lastOp == stop 或 lastOp 缺失 → 默认" }
+    intentPriority: "人工意图优先：lastOp==stop|pause 先判，再看 lastError"
+    lastOpPersistence: "lastOp 必须持久化（DB，非内存）；平台重启或任务由平台外创建 → lastOp 缺失 → 默认 stopped"
     notes: >-
-      DM 无可区分「暂停/停止/失败」的 native stage（仅 Running/Stopped/Finished）：paused/stopped/failed
-      均自 Stopped 消歧，唯一真源见 D14 §9：平台持久化 lastOp∈{start,resume,pause,stop} + DM lastError。
-      lastOp=pause→paused；lastOp=stop 或缺失→stopped（默认）；lastOp∉{pause,stop} 且 lastError!=null→failed。
-      DM Finished→finished；DM Running→running；已建未下发→new。
-      DM TaskStage 大写；平台 state 小写，两者同时经 TaskStatusData.stage 字段透传 native 值。
-    stateDerivation:
-      source: "D14 §9 (docs/architecture/P0-architecture.md)"
-      inputs: [nativeState, lastOp, lastError]
-      rules:
-        running: "native=Running"
-        finished: "native=Finished"
-        paused: "native=Stopped & lastOp=pause"
-        stopped: "native=Stopped & (lastOp=stop | lastOp absent)"
-        failed: "native=Stopped & lastOp not in {pause,stop} & lastError!=null"
-      precedence: [paused, stopped, failed]
+      DM 无「暂停/停止」区分的 native stage：pause-task 与 stop-task 在 DM 侧最终均为 Stopped。
+      故 paused/stopped 为**非对称映射、不合并**：下发用两条不同原生操作（pause-task / stop-task）
+      并**持久化 lastOp**；上收在 DM Stopped 时按 last-op + lastError 唯一推导（见 derivation，
+      人工意图优先），无法判定默认 stopped。failed 仅当 lastOp ∉ {pause,stop} 且 lastError != null
+      （排除 stop 后残留 error 的误判）。平台 new = 已建未下发；finished = DM Finished 正常完成。
+      DM TaskStage 大写、平台 state 小写；原生值同时经 TaskStatusData.stage / nativeState 透传供核对。
+      x-dm-compat：paused/stopped 下发同 native Stopped，靠 last-op 消歧。
   precheck:
     restEndpoint: null
     mechanism: >-
