@@ -89,7 +89,9 @@ export default function TasksPage() {
           <Button size="small" onClick={() => navigate(`/tasks/${r.name}`)}>
             详情
           </Button>
-          {(r.state === "new" || r.state === "stopped") && (
+          {(r.state === "new" ||
+            r.state === "stopped" ||
+            r.state === "failed") && (
             <Button
               size="small"
               onClick={() =>

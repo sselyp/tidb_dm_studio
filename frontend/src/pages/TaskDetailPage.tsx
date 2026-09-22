@@ -77,7 +77,9 @@ export default function TaskDetailPage() {
           <StateTag state={status?.state} />
         </Space>
         <Space>
-          {(status?.state === "new" || status?.state === "stopped") && (
+          {(status?.state === "new" ||
+            status?.state === "stopped" ||
+            status?.state === "failed") && (
             <Button type="primary" onClick={() => stateMutation.mutate("running")}>
               启动
             </Button>
@@ -106,6 +108,9 @@ export default function TaskDetailPage() {
           </div>
           <Descriptions size="small" column={3}>
             <Descriptions.Item label="阶段">{status?.stage ?? "-"}</Descriptions.Item>
+            <Descriptions.Item label="原生状态">
+              {status?.nativeState ?? "-"}
+            </Descriptions.Item>
             <Descriptions.Item label="延迟">
               {status?.lag != null ? `${status.lag}s` : "-"}
             </Descriptions.Item>

@@ -112,12 +112,23 @@ export interface Task {
   sources: SourceInstance[];
 }
 
-export type TaskState = "new" | "running" | "paused" | "stopped" | "finished";
+/** Platform state (v0.9.2). Unique derivation from native + lastOp + lastError. */
+export type TaskState =
+  | "new"
+  | "running"
+  | "paused"
+  | "stopped"
+  | "finished"
+  | "failed";
+
+/** DM native TaskStage, passed through verbatim (capitalized). */
+export type NativeState = "Stopped" | "Running" | "Finished";
 
 export interface TaskSummary {
   name: string;
   state: TaskState;
   stage?: string;
+  nativeState?: NativeState;
   lag?: number;
   sourceCount?: number;
 }
@@ -125,6 +136,7 @@ export interface TaskSummary {
 export interface TaskStatusData {
   state: TaskState;
   stage?: string;
+  nativeState?: NativeState;
   /** 0..1. */
   progress?: number;
   lag?: number;
