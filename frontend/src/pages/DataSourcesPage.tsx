@@ -14,6 +14,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { devContractAssert } from "../api/contractAssert";
 import { envelopeMessage } from "../api/errorMessages";
 import * as api from "../api/endpoints";
 import { ApiError } from "../api/http";
@@ -21,10 +22,13 @@ import type { ConnectivityResult, DataSource, DataSourceWrite } from "../api/typ
 
 const TYPE_COLORS: Record<string, string> = { mysql: "blue", tidb: "purple" };
 
-/** 0.9.1 adds `valid`; fall back to reachable && authenticated pre-freeze. */
+/** 0.9.1 adds required `valid`; fall back to reachable && authenticated pre-freeze. */
 function isTestOk(r: ConnectivityResult): boolean {
   return r.valid ?? Boolean(r.reachable && r.authenticated);
 }
+
+const VALID_MISSING =
+  "/datasources/test omitted required `valid` (AC-CONN-01); UI fell back to reachable && authenticated";
 
 export default function DataSourcesPage() {
   const { message } = AntApp.useApp();
@@ -120,6 +124,7 @@ export default function DataSourcesPage() {
     try {
       const values = await form.validateFields();
       const { data } = await api.testDataSource(values);
+      devContractAssert(data.valid !== undefined, VALID_MISSING);
       setTestResult(data);
     } catch (error) {
       if (error instanceof ApiError) {
