@@ -378,6 +378,114 @@ def check_task_config_isomorphic(doc):
     return problems
 
 
+ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
+
+
+def check_allowed_actions(doc):
+    """D15: actions are server-authoritative, a stable AllowedAction enum on state + status.
+
+    Guards against `allowedActions` drifting back to a free `string[]`, which would let the
+    frontend re-derive actions from `state` (two state machines → drift at failed/stopped/paused).
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    action = schemas.get("AllowedAction")
+    if not action:
+        return fail("AllowedAction schema missing (D15 server-authoritative action enum)")
+    if action.get("enum") != ALLOWED_ACTIONS:
+        problems += fail(
+            f"AllowedAction.enum must be exactly {ALLOWED_ACTIONS}, got {action.get('enum')}"
+        )
+    for name in ("StateData", "TaskStatusData"):
+        sch = schemas.get(name)
+        if not sch:
+            problems += fail(f"{name} missing")
+            continue
+        prop = (sch.get("properties") or {}).get("allowedActions")
+        if not prop:
+            problems += fail(f"{name}.allowedActions missing (D15: server returns the action set)")
+            continue
+        if prop.get("items", {}).get("$ref", "") != "#/components/schemas/AllowedAction":
+            problems += fail(
+                f"{name}.allowedActions.items must be $ref AllowedAction (stable enum, not free string)"
+            )
+        if "allowedActions" not in (sch.get("required") or []):
+            problems += fail(f"{name}.allowedActions must be required")
+    return problems
+
+
+SENSITIVE_KEY_TOKENS = ("password", "passwd", "target_config")
+
+
+def _is_credential_key(key):
+    """True only for credential *values*, not policy flags like mustChangePassword."""
+    k = key.lower()
+    if "target_config" in k:
+        return True
+    if "password" in k or "passwd" in k:
+        return "must" not in k
+    return False
+# read/response models that must never carry an upstream credential
+CREDENTIAL_FREE_MODELS = (
+    "Task",
+    "TaskSummary",
+    "TaskStatusData",
+    "StateData",
+    "DataSource",
+    "ConnectivityResult",
+    "LogPageData",
+    "MeData",
+    "SchemaData",
+)
+
+
+def _credential_hits(node, path):
+    hits = []
+    if isinstance(node, dict):
+        for key, val in node.items():
+            if _is_credential_key(key):
+                hits.append(f"{path}.{key}")
+            hits.extend(_credential_hits(val, f"{path}.{key}"))
+    elif isinstance(node, list):
+        for i, val in enumerate(node):
+            hits.extend(_credential_hits(val, f"{path}[{i}]"))
+    return hits
+
+
+def check_no_credential_echo(doc):
+    """D16 redline: no read/response schema may expose an upstream credential.
+
+    DM v7.1.6 GET /api/v1/tasks returns `target_config.password` in clear; the proxy must
+    strip it. This asserts the *contract* side never models a password on a response schema,
+    and that every request-side password field is writeOnly (input-only channel).
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    ch = doc.get("x-credential-handling") or {}
+    if str(ch.get("redline")) != "D16":
+        problems += fail("x-credential-handling.redline must be D16")
+    never = ch.get("neverInResponses") or []
+    for tok in ("password", "passwd"):
+        if tok not in never:
+            problems += fail(f"x-credential-handling.neverInResponses must include '{tok}'")
+    if not ch.get("stripFromUpstreamResponses"):
+        problems += fail("x-credential-handling.stripFromUpstreamResponses must list DM passthrough fields")
+    for name in CREDENTIAL_FREE_MODELS:
+        sch = schemas.get(name)
+        if not sch:
+            continue
+        for hit in _credential_hits(sch, name):
+            problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
+    # request-side credentials must be writeOnly (input-only, never echoed back)
+    for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):
+        sch = schemas.get(parent) or {}
+        for key, prop in (sch.get("properties") or {}).items():
+            if _is_credential_key(key):
+                if prop.get("writeOnly") is not True:
+                    problems += fail(f"{parent}.{key} must set writeOnly:true (D16 input-only)")
+    return problems
+
+
 # Required operations / per-operation statuses live in the versioned manifest
 # scripts/ci/contract_manifest.json (consumed by check_manifest), so adding a new
 # legitimate endpoint never gets false-killed by a completeness check.
@@ -633,6 +741,8 @@ def main():
         check_state_enum_consistent,
         check_dm_compat,
         check_task_config_isomorphic,
+        check_allowed_actions,
+        check_no_credential_echo,
         check_manifest,
         check_write_mutex_codes,
         check_ifmatch_binding,
