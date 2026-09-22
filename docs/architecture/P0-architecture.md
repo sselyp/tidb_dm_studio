@@ -42,6 +42,7 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 | D11 | schema shape | **`jsonSchema` 只放标准 JSON Schema（draft 2020-12），属性内不嵌 `x-ui-*`**；UI 提示独立于 `formLayout`，键为 JSON Pointer。理由：`jsonSchema` 需被 `/task-validate` 与通用校验器直接复用，厂商扩展会污染校验语义；UI 关注点与校验关注点分离，可各自演进 |
 | D12 | 诊断/失败语义 | **上游源库"检查未通过"≠ HTTP 失败**。`/datasources/test` 与 `/task-precheck?level=connectivity` 一律 **HTTP 200 = 检查已执行**，通过与否看 `data.valid` + `data.errors`；上游不可达/鉴权失败**不**用 5xx。**502 只保留 DM 控制面不可用**（`50201 E_DM_UNAVAILABLE`）；退役 `50202 E_SOURCE_UNREACHABLE`、`50203 E_TARGET_AUTH_FAILED` |
 | D13 | 读模型不变量 | `Task.sources` 是落库展开态 `config.sources` 的**只读投影**，二者**长度/顺序/内容恒等**（契约测试断言），不构成两个真相源 |
+| D14 | 任务状态枚举 | 唯一真源 = `[new, running, paused, stopped, finished, failed]`。**收回 `pending`**（用 `new`）；保留 `failed` 但**必须按 §9 从 native + 持久化 `lastOp` 唯一推导**，不允许各端自行猜测 |
 
 ## 4. 错误码
 
@@ -86,3 +87,35 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 | P2 | 表单渲染器、任务列表/详情、监控页、YAML 双向编辑 | 前端开发-dm-ds |
 | P3 | 前后端联调、端到端跑通 | 后端 + 前端 |
 | P4 | 用例设计、功能验收、代码质量 | DS-测试 / DS-代码审核 |
+
+## 9. 任务状态推导（D14）
+
+DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`stopped`/`failed` 均由 `Stopped` **消歧**而来。消歧输入：
+
+- `lastOp ∈ {start, resume, pause, stop}`：**最近一次平台下发意图，必须持久化**（DB，非内存）；平台重启后仍在。
+- `lastError`：DM `Stopped` 携带的错误信息（空表示正常停下）。
+- `stage` / `nativeState`：DM 原生值**原样透传**，供人工核对。
+
+| 平台 `state` | DM native | 判定条件 |
+|---|---|---|
+| `new` | （DM 无此任务） | 平台侧已建、从未下发（`lastOp` 缺失且 DM 无任务） |
+| `running` | `Running` | — |
+| `finished` | `Finished` | — |
+| `failed` | `Stopped` | `lastOp ∉ {pause, stop}` **且** `lastError != null`（自行死亡，非人工暂停/停止） |
+| `paused` | `Stopped` | `lastOp == pause` |
+| `stopped` | `Stopped` | `lastOp == stop`，**或** `lastOp` 缺失（平台外创建 / 平台重启无意图）→ **默认值** |
+
+- 判定优先级：先看 `lastOp == stop|pause`（人工意图优先），其余落 `lastError` 判 `failed`/`stopped`。
+- 契约须在 `x-dm-compat` 注明本表；`stopped` 为无意图兜底，避免「重启即 failed」。
+- 文案/UI 颜色不属契约，前端仅按枚举分支。
+
+### 验收用例（@ds-测试 断言对象）
+
+| # | 构造 | 期望 `state` |
+|---|---|---|
+| S1 | DM `Running` | `running` |
+| S2 | DM `Finished` | `finished` |
+| S3 | DM `Stopped` + `lastError!=null` + `lastOp=start` | `failed` |
+| S4 | DM `Stopped` + `lastError!=null` + `lastOp=stop` | `stopped`（**不得**误判 failed） |
+| S5 | DM `Stopped` + `lastOp=pause` | `paused` |
+| S6 | 平台外建任务 / 重启后无 `lastOp` | `stopped`（默认） |
