@@ -1,0 +1,28 @@
+# env / secrets
+.env
+.env.local
+*.local
+
+# go
+/backend/bin/
+/backend/tmp/
+*.test
+*.out
+
+# node
+node_modules/
+/frontend/dist/
+/frontend/.vite/
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# editor / os
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# build artifacts
+/dist/
+/build/
