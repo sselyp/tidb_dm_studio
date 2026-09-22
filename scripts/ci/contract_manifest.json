@@ -1,0 +1,34 @@
+{
+  "version": "0.9.1",
+  "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
+  "operations": [
+    { "operationId": "login",            "path": "/login",                 "method": "post",   "statuses": [200, 400, 401, 422, 429] },
+    { "operationId": "logout",           "path": "/logout",                "method": "post",   "statuses": [204, 401, 403] },
+    { "operationId": "changePassword",   "path": "/password",              "method": "post",   "statuses": [204, 401, 403, 422, 429] },
+    { "operationId": "getMe",            "path": "/me",                    "method": "get",    "statuses": [200, 401] },
+    { "operationId": "healthz",          "path": "/healthz",               "method": "get",    "statuses": [200] },
+    { "operationId": "listDataSources",  "path": "/datasources",           "method": "get",    "statuses": [200, 401, 403] },
+    { "operationId": "createDataSource", "path": "/datasources",           "method": "post",   "statuses": [201, 400, 401, 403, 409, 422] },
+    { "operationId": "getDataSource",    "path": "/datasources/{id}",      "method": "get",    "statuses": [200, 401, 403, 404] },
+    { "operationId": "updateDataSource", "path": "/datasources/{id}",      "method": "put",    "statuses": [200, 400, 401, 403, 404, 412, 422, 428] },
+    { "operationId": "deleteDataSource", "path": "/datasources/{id}",      "method": "delete", "statuses": [204, 401, 403, 404, 409] },
+    { "operationId": "testDataSource",   "path": "/datasources/test",      "method": "post",   "statuses": [200, 400, 401, 403, 422] },
+    { "operationId": "listTasks",        "path": "/tasks",                 "method": "get",    "statuses": [200, 401, 403] },
+    { "operationId": "createTask",       "path": "/tasks",                 "method": "post",   "statuses": [201, 400, 401, 403, 409, 422] },
+    { "operationId": "getTaskSchema",    "path": "/task-schema",           "method": "get",    "statuses": [200, 400, 401, 403] },
+    { "operationId": "validateTask",     "path": "/task-validate",         "method": "post",   "statuses": [200, 400, 401, 403] },
+    { "operationId": "precheckTask",     "path": "/task-precheck",         "method": "post",   "statuses": [200, 400, 401, 403, 502] },
+    { "operationId": "getTask",          "path": "/tasks/{name}",          "method": "get",    "statuses": [200, 400, 401, 403, 404] },
+    { "operationId": "updateTask",       "path": "/tasks/{name}",          "method": "put",    "statuses": [200, 400, 401, 403, 404, 412, 422, 428] },
+    { "operationId": "deleteTask",       "path": "/tasks/{name}",          "method": "delete", "statuses": [204, 400, 401, 403, 404, 409] },
+    { "operationId": "putTaskState",     "path": "/tasks/{name}/state",    "method": "put",    "statuses": [200, 400, 401, 403, 404, 409, 422, 502] },
+    { "operationId": "getTaskStatus",    "path": "/tasks/{name}/status",   "method": "get",    "statuses": [200, 400, 401, 403, 404] },
+    { "operationId": "getTaskLogs",      "path": "/tasks/{name}/logs",     "method": "get",    "statuses": [200, 400, 401, 403, 404] },
+    { "operationId": "exportTaskYaml",   "path": "/tasks/{name}/yaml",     "method": "get",    "statuses": [200, 400, 401, 403, 404] }
+  ],
+  "responseHeaders": {
+    "DataSourceItem": ["ETag"],
+    "TaskItem": ["ETag"],
+    "PreconditionFailed": ["ETag"]
+  }
+}
