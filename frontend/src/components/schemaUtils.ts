@@ -1,4 +1,4 @@
-import type { UiField, VisibleWhen } from "../api/types";
+import type { FormLayout, UiField, VisibleWhen } from "../api/types";
 
 export interface JsonSchemaNode {
   type?: string;
@@ -138,4 +138,33 @@ export function inferredWidget(
       : "key-value";
   }
   return "input";
+}
+
+/**
+ * Dev-time guard for silent invisibility: `formLayout.steps` is the render
+ * whitelist, so a top-level `jsonSchema` property that no step/group lists (and
+ * that has no `ui` entry either) would never reach the form. Returns the
+ * uncovered pointers so callers can warn loudly instead of dropping a field.
+ */
+export function lintTopLevelCoverage(
+  root: JsonSchemaNode | undefined,
+  layout: FormLayout | undefined,
+): string[] {
+  if (!root?.properties) {
+    return [];
+  }
+  const listed = new Set<string>();
+  for (const step of layout?.steps ?? []) {
+    for (const group of step.groups ?? []) {
+      for (const field of group.fields ?? []) {
+        listed.add(field);
+      }
+    }
+  }
+  for (const key of Object.keys(layout?.ui ?? {})) {
+    listed.add(key);
+  }
+  return Object.keys(root.properties)
+    .map((key) => `/${key}`)
+    .filter((pointer) => !listed.has(pointer));
 }

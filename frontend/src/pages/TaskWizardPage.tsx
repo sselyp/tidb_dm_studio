@@ -1,6 +1,6 @@
 import { App as AntApp, Alert, Button, Space, Steps, Typography } from "antd";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { stringify as toYaml } from "yaml";
 import * as api from "../api/endpoints";
@@ -14,7 +14,11 @@ import type {
   ValidationData,
 } from "../api/types";
 import SchemaForm from "../components/SchemaForm";
-import { setByPointer } from "../components/schemaUtils";
+import {
+  lintTopLevelCoverage,
+  setByPointer,
+  type JsonSchemaNode,
+} from "../components/schemaUtils";
 import ValidationReport from "../components/ValidationReport";
 import YamlEditor from "../components/YamlEditor";
 import {
@@ -60,6 +64,29 @@ export default function TaskWizardPage() {
 
   const schemaSteps = schemaQuery.data?.data.formLayout?.steps;
   const formLayout = schemaQuery.data?.data.formLayout;
+
+  // Surface, at dev time, any jsonSchema property the layout never references:
+  // it would otherwise be silently invisible in the wizard (see incident: a new
+  // param missing from formLayout.steps).
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+    const data = schemaQuery.data?.data;
+    if (!data) {
+      return;
+    }
+    const gaps = lintTopLevelCoverage(
+      data.jsonSchema as JsonSchemaNode | undefined,
+      data.formLayout,
+    );
+    if (gaps.length > 0) {
+      console.warn(
+        "[dm-web] jsonSchema properties not rendered (absent from formLayout.steps/ui):",
+        gaps,
+      );
+    }
+  }, [schemaQuery.data]);
 
   const steps: FormStep[] = useMemo(() => {
     const base = schemaSteps && schemaSteps.length > 0 ? schemaSteps : [FALLBACK_STEP];
