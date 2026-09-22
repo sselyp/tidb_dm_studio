@@ -75,6 +75,21 @@ def check_field_codes_registered(doc):
     return problems
 
 
+def check_required_field_codes(doc):
+    """G2 gate (pinned by name): codes frozen by the architecture must be present
+    in x-field-error-codes, so a consistent deletion (registry + enum together)
+    cannot silently drop a code."""
+    required = _load_manifest().get("requiredFieldCodes") or []
+    if not required:
+        return 0
+    registry = set(doc.get("x-field-error-codes", []))
+    problems = 0
+    for code in required:
+        if code not in registry:
+            problems += fail(f"required field code {code} missing from x-field-error-codes")
+    return problems
+
+
 def check_etag_exposed(doc):
     problems = 0
     for resp_name in ("DataSourceItem", "TaskItem"):
@@ -512,6 +527,7 @@ def main():
         check_error_code_prefix,
         check_no_top_level_errors,
         check_field_codes_registered,
+        check_required_field_codes,
         check_etag_exposed,
         check_http_codes_used,
         check_static_routes,

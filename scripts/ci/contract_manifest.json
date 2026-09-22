@@ -30,5 +30,14 @@
     "DataSourceItem": ["ETag"],
     "TaskItem": ["ETag"],
     "PreconditionFailed": ["ETag"]
-  }
+  },
+  "requiredFieldCodes": [
+    "E_FIELD_REQUIRED",
+    "E_PARAM_RANGE",
+    "E_PARAM_ENUM",
+    "E_PARAM_REGEX",
+    "E_PARAM_DEPENDENCY",
+    "E_FIELD_DUPLICATE",
+    "E_FIELD_EXISTENCE"
+  ]
 }
