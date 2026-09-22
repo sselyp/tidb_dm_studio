@@ -37,6 +37,13 @@ jobs:
           else
             echo "check_contract.py or api/openapi.yaml missing, skipping gate self-test"
           fi
+      - name: No hardcoded addresses / credentials
+        run: |
+          if [ -f scripts/ci/check_no_hardcoded.sh ]; then
+            bash scripts/ci/check_no_hardcoded.sh
+          else
+            echo "scripts/ci/check_no_hardcoded.sh not present yet, skipping"
+          fi
 
   backend:
     runs-on: ubuntu-latest

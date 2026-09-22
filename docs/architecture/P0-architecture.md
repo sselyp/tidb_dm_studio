@@ -42,6 +42,10 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 | D11 | schema shape | **`jsonSchema` 只放标准 JSON Schema（draft 2020-12），属性内不嵌 `x-ui-*`**；UI 提示独立于 `formLayout`，键为 JSON Pointer。理由：`jsonSchema` 需被 `/task-validate` 与通用校验器直接复用，厂商扩展会污染校验语义；UI 关注点与校验关注点分离，可各自演进 |
 | D12 | 诊断/失败语义 | **上游源库"检查未通过"≠ HTTP 失败**。`/datasources/test` 与 `/task-precheck?level=connectivity` 一律 **HTTP 200 = 检查已执行**，通过与否看 `data.valid` + `data.errors`；上游不可达/鉴权失败**不**用 5xx。**502 只保留 DM 控制面不可用**（`50201 E_DM_UNAVAILABLE`）；退役 `50202 E_SOURCE_UNREACHABLE`、`50203 E_TARGET_AUTH_FAILED` |
 | D13 | 读模型不变量 | `Task.sources` 是落库展开态 `config.sources` 的**只读投影**，二者**长度/顺序/内容恒等**（契约测试断言），不构成两个真相源 |
+| D14 | 任务状态枚举 | 唯一真源 = `[new, running, paused, stopped, finished, failed]`。**收回 `pending`**（用 `new`）；保留 `failed` 但**必须按 §9 从 native + 持久化 `lastOp` 唯一推导**，不允许各端自行猜测 |
+| D15 | 动作集合真源 | `/tasks/{name}/state` 与 `/tasks/{name}/status` 返回的 **`allowedActions` 是稳定 enum**（`[start, pause, resume, stop, delete]`），是「可执行动作」的唯一真源；前端**不得**按 `state` 自行推导动作（`state` 只定展示）。 |
+| D16 | 凭据零回显（红线） | **代理层必须剥离/掩码 DM 原生响应中的一切口令字段**：`target_config.password`、source 口令等。已取证 v7.1.6 `GET /api/v1/tasks` **明文返回 `target_config.password`**（`/api/v1/sources` 则掩码）；后端透传前必须清洗，`/tasks`、`/task/status` 等一律不得出现目标库口令。 |
+| D17 | DM 能力缺口兜底 | v7.1.6 OpenAPI **无 pause/resume、无 check-task、无日志、无 YAML 导出**。定死：pause/resume 与 check-task **经 dmctl 实现**（后端封装，非 OpenAPI）；日志与 YAML 导出**后端自实现且必须脱敏**（YAML 由落库 config 渲染，不透传原生）；版本探测**不读 `dm.json`**（自称 6.0.0），以 dmctl/二进制/配置为准；`allowedActions` 按**实际可用能力**下发（dmctl 不可用则不下发 pause/resume，允许降级）。详见 §11。 |
 
 ## 4. 错误码
 
@@ -72,7 +76,7 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 
 ## 7. 待补充
 
-- [ ] DM 版本与 dm-master/dm-worker 拓扑（待 @易鹏）→ 校准 precheck 项与 API 版本差异
+- [x] DM 版本与 dm-master/dm-worker 拓扑：v7.1.6 dm-master OpenAPI（31 paths / 53 schemas），3 worker bound；能力缺口与兜底见 §11 与 `docs/architecture/dm-openapi-v7.1.6-capability.md`
 - [~] 全参数 JSON Schema 与字段清单（结构已冻结，见 D11 + `task-config-schema.md`；版本相关字段 `online-ddl`/`validators` 待 DM 版本校准）
 - [ ] 页面契约（向导步骤、监控页字段）
 - [ ] 依赖清单与 License 合规（@DS-代码审核）
@@ -86,3 +90,78 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 | P2 | 表单渲染器、任务列表/详情、监控页、YAML 双向编辑 | 前端开发-dm-ds |
 | P3 | 前后端联调、端到端跑通 | 后端 + 前端 |
 | P4 | 用例设计、功能验收、代码质量 | DS-测试 / DS-代码审核 |
+
+## 9. 任务状态推导（D14）
+
+DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`stopped`/`failed` 均由 `Stopped` **消歧**而来。消歧输入：
+
+- `lastOp ∈ {start, resume, pause, stop}`：**最近一次平台下发意图，必须持久化**（DB，非内存）；平台重启后仍在。
+- `lastError`：DM `Stopped` 携带的错误信息（空表示正常停下）。
+- `stage` / `nativeState`：DM 原生值**原样透传**，供人工核对。
+
+| 平台 `state` | DM native | 判定条件 |
+|---|---|---|
+| `new` | （DM 无此任务） | 平台侧已建、从未下发（`lastOp` 缺失且 DM 无任务） |
+| `running` | `Running` | — |
+| `finished` | `Finished` | — |
+| `failed` | `Stopped` | `lastOp ∉ {pause, stop}` **且** `lastError != null`（自行死亡，非人工暂停/停止） |
+| `paused` | `Stopped` | `lastOp == pause` |
+| `stopped` | `Stopped` | `lastOp == stop`，**或** `lastOp` 缺失（平台外创建 / 平台重启无意图）→ **默认值** |
+
+- 判定优先级：先看 `lastOp == stop|pause`（人工意图优先），其余落 `lastError` 判 `failed`/`stopped`。
+- 契约须在 `x-dm-compat` 注明本表；`stopped` 为无意图兜底，避免「重启即 failed」。
+- 文案/UI 颜色不属契约，前端仅按枚举分支。
+
+### 验收用例（@ds-测试 断言对象）
+
+| # | 构造 | 期望 `state` |
+|---|---|---|
+| S1 | DM `Running` | `running` |
+| S2 | DM `Finished` | `finished` |
+| S3 | DM `Stopped` + `lastError!=null` + `lastOp=start` | `failed` |
+| S4 | DM `Stopped` + `lastError!=null` + `lastOp=stop` | `stopped`（**不得**误判 failed） |
+| S5 | DM `Stopped` + `lastOp=pause` | `paused` |
+| S6 | 平台外建任务 / 重启后无 `lastOp` | `stopped`（默认） |
+
+## 10. 动作集合与凭据红线（D15/D16）
+
+### 10.1 `allowedActions`（D15）
+- 稳定 enum：`[start, pause, resume, stop, delete]`；`/tasks/{name}/state`（写）与 `/tasks/{name}/status`（读）**同源返回**。
+- 期望语义（服务端按 `state` 映射，客户端不推导）：
+  | state | allowedActions |
+  |---|---|
+  | `new` / `stopped` / `failed` | `[start, delete]` |
+  | `running` | `[pause, stop]` |
+  | `paused` | `[resume, stop]` |
+  | `finished` | `[delete]` |
+- 前端：`allowedActions` 存在即据此渲染；仅缺失时回退 `state` 分支（兼容路径，标记待删）。
+
+### 10.2 凭据零回显（D16，红线）
+- 事实：DM v7.1.6 `GET /api/v1/tasks` 明文返回 `target_config.password`；`/api/v1/sources` 掩码。
+- 要求：后端代理对**所有** DM 原生响应做剥离/掩码，任何 `/tasks*`、`/sources*` 响应与日志**不得**含上下游口令。
+- 验证：`check_contract.py` 增反向断言（响应 schema 不得暴露 password 字段）+ 契约测试对 `/tasks` 响应做「无口令」断言；AC-SEC 增「经后端 `/tasks` 响应不得出现目标库口令」。
+
+## 11. DM OpenAPI v7.1.6 能力映射与缺口兜底（D17）
+
+> 取证：@ds-代码审核 本机直连 `10.168.2.241:8261` 实测（31 paths / 53 schemas）；详细矩阵见 `docs/architecture/dm-openapi-v7.1.6-capability.md`。
+
+### 11.1 可直接代理（OpenAPI 原生）
+- tasks/sources CRUD、source enable/disable/relay、`GET /tasks/{name}/status`（每 source 一条 SubTaskStatus：`stage`、`dump|load|sync_status`、`seconds_behind_master`、`synced`、`unresolved_groups`）、`.../sources/{s}/schemas/...`（库表浏览）、`.../migrate_targets`（route-rules 预览）、`/cluster/masters|workers`（健康）。
+- 请求体字段：`StartTaskRequest{remove_meta, safe_mode_time_duration, source_name_list, start_time}`、`StopTaskRequest{source_name_list, timeout_duration}`；`Task` 含 `ignore_checking_items`、`on_duplicate`、`shard_mode`。
+
+### 11.2 缺口 → 兜底（必须按此实现）
+| 产品能力 | DM v7.1.6 OpenAPI | 兜底 |
+|---|---|---|
+| `pause` / `resume` | **无**（仅 `POST /tasks/{name}/start` `/stop`；`TaskStage` enum `[Stopped,Running,Finished]` 无 `Paused`） | 后端封装 **dmctl `pause-task` / `resume-task`**；`desiredState:paused` 仅由后端状态机产生，**不**从 DM stage 反推 |
+| `check-task` 预检 | **无端点** | 后端封装 **dmctl `check-task`**；`OperateTaskResponse.check_result` 仅作 start/stop 附带的补充，**不替代** `/task-precheck` |
+| 任务日志 | **无端点** | 后端自实现（worker 日志/落库）；不得透传原生 |
+| YAML 导出 | **无端点**（仅 `POST /tasks/converters` 可转换） | 后端基于**落库 config 渲染**，导出前**脱敏**（D16）；`/tasks/{name}/yaml` 同口径 |
+| 版本探测 | `dm.json` 自称 `info.version=6.0.0`（与二进制 7.1.6 不符）；`/cluster/info` 只回 cluster_id | 以 **dmctl / 二进制 / 配置**为准；契约 `x-dm-compat` 记录已校准 v7.1.6 |
+
+### 11.3 监控字段映射（喂状态/延迟/阶段与 PRECHECK）
+- `stage`（+ 契约 `nativeState`）→ 阶段展示与 §9 状态消歧输入；
+- `seconds_behind_master` → 延迟指标；
+- `unresolved_groups` → 分片 DDL 冲突，进 `PRECHECK_*` 告警（D8）。
+
+### 11.4 安全（承 D16）
+- 代理对 task 响应**白名单化**：剔除/置空 `target_config.password` 及一切 `*password*` 键，**不入日志/审计原文**；`/tasks/{name}/yaml` 同口径。列为后端合入门禁。

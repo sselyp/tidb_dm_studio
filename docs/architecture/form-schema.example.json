@@ -37,7 +37,8 @@
       "loaders": { "type": "array", "items": { "$ref": "#/$defs/LoaderConfig" } },
       "syncers": { "type": "array", "items": { "$ref": "#/$defs/SyncerConfig" } },
       "onlineDdl": { "type": "boolean", "default": true },
-      "relayDir": { "type": "string" }
+      "relayDir": { "type": "string" },
+      "ignoreCheckItems": { "type": "array", "items": { "type": "string" }, "description": "需跳过的预检项；候选见 x-dm-compat.precheck.ignoreItemIds（DM 版本相关，不设 enum）" }
     },
     "$defs": {
       "SourceInstance": {
@@ -174,7 +175,7 @@
         "groups": [
           { "key": "target", "title": "下游 TiDB", "fields": ["/targetDatabase"] },
           { "key": "threads", "title": "线程与限流", "fields": ["/mydumpers", "/loaders", "/syncers"] },
-          { "key": "ddl", "title": "DDL 与杂项", "fields": ["/onlineDdl", "/relayDir"] }
+          { "key": "ddl", "title": "DDL 与杂项", "fields": ["/onlineDdl", "/ignoreCheckItems", "/relayDir"] }
         ]
       }
     ],
@@ -214,6 +215,7 @@
       "/loaders": { "widget": "array-table" },
       "/syncers": { "widget": "array-table" },
       "/onlineDdl": { "widget": "switch", "help": "DM 2.0 默认开启；具体字段随版本校准" },
+      "/ignoreCheckItems": { "widget": "multi-select", "advanced": true, "help": "跳过预检项；候选由服务端注入（x-dm-compat.precheck.ignoreItemIds），允许自定义" },
       "/relayDir": { "widget": "input", "advanced": true }
     }
   }

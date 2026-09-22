@@ -61,6 +61,35 @@ def policy_reject_as_200(d):
     r["200"] = r.pop("422")
 
 
+def consistency_delete_field_code(d, code):
+    """Delete a field code from registry AND enum together (self-consistent bad state)."""
+    reg = d["x-field-error-codes"]
+    enum = d["components"]["schemas"]["FieldError"]["properties"]["errorCode"]["enum"]
+    assert code in reg and code in enum, f"{code} absent from registry/enum (would be a silent no-op)"
+    d["x-field-error-codes"] = [c for c in reg if c != code]
+    enum[:] = [c for c in enum if c != code]
+
+
+def platform_state(d):
+    return d["x-dm-compat"]["taskStageMapping"]["platformState"]
+
+
+def derivation(d):
+    return d["x-dm-compat"]["taskStageMapping"]["derivation"]
+
+
+def failed_row(d):
+    return next(r for r in derivation(d) if r.get("platformState") == "failed")
+
+
+def state_enum(d):
+    return d["components"]["schemas"]["TaskSummary"]["properties"]["state"]["enum"]
+
+
+def status_enum(d):
+    return d["components"]["schemas"]["TaskStatusData"]["properties"]["state"]["enum"]
+
+
 # name, mutate, must_fail
 MUTATIONS = [
     ("drop 428 from PUT /tasks/{name}", lambda d: del_resp(d, "/tasks/{name}", "put", 428), True),
@@ -100,8 +129,52 @@ MUTATIONS = [
     ("drop E_TARGET_AUTH_FAILED from x-precheck-codes", lambda d: drop_precheck_code(d, "E_TARGET_AUTH_FAILED"), True),
     ("x-error-codes code prefix != http", misalign_error_code, True),
     ("/task-precheck description reintroduces upstream-502 wording", lambda d: d["paths"]["/task-precheck"]["post"].__setitem__("description", "level=connectivity 触达上游，失败回 502。"), True),
+    # D14 (v0.9.2): six-state enum + `failed` state derivation must be pinned.
+    ("platformState re-introduces 'pending' (D14 forbids)", lambda d: platform_state(d).append("pending"), True),
+    ("platformState drops 'failed'", lambda d: platform_state(d).remove("failed"), True),
+    ("derivation drops 'failed' row", lambda d: derivation(d).__setitem__(slice(None), [r for r in derivation(d) if r.get("platformState") != "failed"]), True),
+    ("derivation 'failed' loses lastOp guard", lambda d: failed_row(d).__setitem__("condition", "native=Stopped & lastError!=null"), True),
+    ("intentPriority removed (human-intent priority lost)", lambda d: d["x-dm-compat"]["taskStageMapping"].pop("intentPriority", None), True),
+    ("lastOpPersistence removed (lastOp not persisted)", lambda d: d["x-dm-compat"]["taskStageMapping"].pop("lastOpPersistence", None), True),
+    ("state enum (both) re-introduces 'pending'", lambda d: (state_enum(d).append("pending"), status_enum(d).append("pending")), True),
+    ("state enum (both) drops 'failed'", lambda d: (state_enum(d).remove("failed"), status_enum(d).remove("failed")), True),
+    ("dmEnum drops 'Finished' (control: check_dm_compat guards)", lambda d: d["x-dm-compat"]["taskStageMapping"]["dmEnum"].remove("Finished"), True),
     # benign control: must NOT be flagged
     ("benign: reword a response description", lambda d: d["components"]["responses"]["Error"].__setitem__("description", "统一错误包"), False),
+]
+
+# G2 (main d99a2e4): manifest-pinned required field codes; consistent deletion must FAIL.
+for _code in (
+    "E_FIELD_REQUIRED",
+    "E_PARAM_RANGE",
+    "E_PARAM_ENUM",
+    "E_PARAM_REGEX",
+    "E_PARAM_DEPENDENCY",
+    "E_FIELD_DUPLICATE",
+    "E_FIELD_EXISTENCE",
+):
+    MUTATIONS.append(
+        (
+            f"consistent-delete {_code} (registry+enum)",
+            lambda d, c=_code: consistency_delete_field_code(d, c),
+            True,
+        )
+    )
+
+# allowedActions must stay a server-authoritative stable enum (D15).
+MUTATIONS += [
+    ("StateData.allowedActions back to free string[]", lambda d: d["components"]["schemas"]["StateData"]["properties"]["allowedActions"].__setitem__("items", {"type": "string"}), True),
+    ("drop allowedActions from TaskStatusData (status has no action source)", lambda d: d["components"]["schemas"]["TaskStatusData"]["properties"].pop("allowedActions", None), True),
+    ("AllowedAction enum loses 'resume'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].remove("resume"), True),
+    ("AllowedAction enum gains bogus 'restart'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].append("restart"), True),
+]
+
+# D16 redline: read models must not echo credentials; request credentials stay writeOnly.
+MUTATIONS += [
+    ("Task response exposes password (D16 regression)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("DataSource response exposes target_config.password (D16)", lambda d: d["components"]["schemas"]["DataSource"]["properties"].__setitem__("targetConfig", {"type": "object", "properties": {"password": {"type": "string"}}}), True),
+    ("x-credential-handling redline removed", lambda d: d.pop("x-credential-handling", None), True),
+    ("DataSourceWrite.password loses writeOnly (echoable input)", lambda d: d["components"]["schemas"]["DataSourceWrite"]["properties"]["password"].pop("writeOnly", None), True),
 ]
 
 
