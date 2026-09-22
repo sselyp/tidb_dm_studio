@@ -28,12 +28,13 @@ export function compatActions(state: TaskState | undefined): TaskAction[] {
     case "new":
     case "stopped":
     case "failed":
-      return ["start"];
+      return ["start", "delete"];
     case "running":
       return ["pause", "stop"];
     case "paused":
       return ["resume", "stop"];
     case "finished":
+      return ["delete"];
     default:
       return [];
   }

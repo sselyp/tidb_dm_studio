@@ -89,7 +89,7 @@ export default function TasksPage() {
       render: (_, r) => {
         // D15: the server owns the action set; the state mapping is a dev-only
         // compatibility fallback for list responses that omit `allowedActions`.
-        const { actions, compat } = resolveAllowedActions(r.allowedActions, r.state);
+        const { actions } = resolveAllowedActions(r.allowedActions, r.state);
         devContractAssert(
           r.allowedActions !== undefined,
           "task list item is missing allowedActions; using frontend state→action fallback",
@@ -121,7 +121,7 @@ export default function TasksPage() {
                 </Button>
               );
             })}
-            {(compat || actions.includes("delete")) && (
+            {actions.includes("delete") && (
               <Popconfirm
                 title="确认删除该任务？"
                 onConfirm={() => deleteMutation.mutate(r.name)}

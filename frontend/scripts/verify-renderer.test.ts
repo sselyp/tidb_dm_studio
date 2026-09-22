@@ -240,26 +240,28 @@ describe("allowedActions single source (D15)", () => {
     });
   });
 
-  it("compat fallback for failed = start", () => {
+  it("compat fallback for failed = start+delete", () => {
     expect(resolveAllowedActions(undefined, "failed")).toEqual({
-      actions: ["start"],
+      actions: ["start", "delete"],
       compat: true,
     });
   });
 
-  it("compat running = pause+stop", () => {
-    expect(compatActions("running")).toEqual(["pause", "stop"]);
-  });
-
-  it("compat paused = resume+stop", () => {
-    expect(compatActions("paused")).toEqual(["resume", "stop"]);
-  });
-
-  it("compat new/stopped = start", () => {
-    expect([compatActions("new"), compatActions("stopped")]).toEqual([["start"], ["start"]]);
-  });
-
-  it("compat finished has no actions", () => {
-    expect(compatActions("finished")).toEqual([]);
+  it("compat fallback matches P0 §10.1 for every state", () => {
+    expect({
+      new: compatActions("new"),
+      stopped: compatActions("stopped"),
+      failed: compatActions("failed"),
+      running: compatActions("running"),
+      paused: compatActions("paused"),
+      finished: compatActions("finished"),
+    }).toEqual({
+      new: ["start", "delete"],
+      stopped: ["start", "delete"],
+      failed: ["start", "delete"],
+      running: ["pause", "stop"],
+      paused: ["resume", "stop"],
+      finished: ["delete"],
+    });
   });
 });
