@@ -343,7 +343,7 @@
     "check_healthz_public"
   ],
   "mutations": {
-    "count": 67,
+    "count": 70,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -411,7 +411,10 @@
       "Task response exposes password (D16 regression)",
       "DataSource response exposes target_config.password (D16)",
       "x-credential-handling redline removed",
-      "DataSourceWrite.password loses writeOnly (echoable input)"
+      "DataSourceWrite.password loses writeOnly (echoable input)",
+      "TaskConfig.password (direct; $ref'd from Task.config)",
+      "TaskConfig.targetDatabase.password (nested; our own path)",
+      "SourceInstance.password (direct; $ref'd from Task.sources)"
     ]
   }
 }

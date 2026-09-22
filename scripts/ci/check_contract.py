@@ -540,16 +540,29 @@ CREDENTIAL_FREE_MODELS = (
 )
 
 
-def _credential_hits(node, path):
+def _credential_hits(node, path, schemas, seen=None):
+    """Walk a response model, dereferencing local `$ref`s so a credential hidden behind
+    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught."""
+    if seen is None:
+        seen = set()
     hits = []
     if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            name = ref.rsplit("/", 1)[-1]
+            if name in seen:
+                return hits
+            target = schemas.get(name)
+            if target is not None:
+                hits.extend(_credential_hits(target, f"{path}->{name}", schemas, seen | {name}))
+            return hits
         for key, val in node.items():
             if _is_credential_key(key):
                 hits.append(f"{path}.{key}")
-            hits.extend(_credential_hits(val, f"{path}.{key}"))
+            hits.extend(_credential_hits(val, f"{path}.{key}", schemas, seen))
     elif isinstance(node, list):
         for i, val in enumerate(node):
-            hits.extend(_credential_hits(val, f"{path}[{i}]"))
+            hits.extend(_credential_hits(val, f"{path}[{i}]", schemas, seen))
     return hits
 
 
@@ -575,7 +588,7 @@ def check_no_credential_echo(doc):
         sch = schemas.get(name)
         if not sch:
             continue
-        for hit in _credential_hits(sch, name):
+        for hit in _credential_hits(sch, name, schemas):
             problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
     # request-side credentials must be writeOnly (input-only, never echoed back)
     for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):

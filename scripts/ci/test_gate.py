@@ -194,6 +194,14 @@ MUTATIONS += [
     ("DataSourceWrite.password loses writeOnly (echoable input)", lambda d: d["components"]["schemas"]["DataSourceWrite"]["properties"]["password"].pop("writeOnly", None), True),
 ]
 
+# D16 $ref blind spot (DS-测试 probe): a credential nested behind Task.config ($ref TaskConfig)
+# or Task.sources ($ref SourceInstance) must still be caught -> _credential_hits dereferences $ref.
+MUTATIONS += [
+    ("TaskConfig.password (direct; $ref'd from Task.config)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("TaskConfig.targetDatabase.password (nested; our own path)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("targetDatabase", {"type": "object", "properties": {"password": {"type": "string"}}}), True),
+    ("SourceInstance.password (direct; $ref'd from Task.sources)", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("password", {"type": "string"}), True),
+]
+
 
 def assert_gate_manifest():
     """The manifest pins the mutation set so it cannot silently shrink.
