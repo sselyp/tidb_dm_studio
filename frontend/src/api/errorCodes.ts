@@ -24,8 +24,6 @@ export const ErrorCodes = {
   E_RATE_LIMITED: { http: 429, code: 42901 },
   E_ACCOUNT_LOCKED: { http: 429, code: 42902 },
   E_DM_UNAVAILABLE: { http: 502, code: 50201 },
-  E_SOURCE_UNREACHABLE: { http: 502, code: 50202 },
-  E_TARGET_AUTH_FAILED: { http: 502, code: 50203 },
 } as const;
 
 export type ErrorCodeName = keyof typeof ErrorCodes;
@@ -37,6 +35,7 @@ export const FieldErrorCodes = [
   "E_PARAM_REGEX",
   "E_PARAM_DEPENDENCY",
   "E_FIELD_EXISTENCE",
+  "E_FIELD_DUPLICATE",
 ] as const;
 
 export const PrecheckCodes = [
@@ -45,4 +44,6 @@ export const PrecheckCodes = [
   "PRECHECK_ROUTE_OVERLAP",
   "PRECHECK_TASK_NAME_DUP",
   "PRECHECK_CHARSET_TZ_MISMATCH",
+  "E_SOURCE_UNREACHABLE",
+  "E_TARGET_AUTH_FAILED",
 ] as const;

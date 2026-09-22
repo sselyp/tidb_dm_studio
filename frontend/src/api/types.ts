@@ -1,5 +1,7 @@
 // Types mirroring api/openapi.yaml (v0.9.0). Keep in sync with the contract.
 
+import { FieldErrorCodes, PrecheckCodes } from "./errorCodes";
+
 export interface Envelope<T> {
   code: number;
   data: T;
@@ -14,21 +16,13 @@ export type RuleCode =
   | "ENUM"
   | "REGEX"
   | "DEPENDENCY"
-  | "EXISTENCE";
+  | "EXISTENCE"
+  | "UNIQUE";
 
+/** Derived from the generated registries (do not hand-maintain). */
 export type FieldErrorCode =
-  | "E_FIELD_REQUIRED"
-  | "E_PARAM_RANGE"
-  | "E_PARAM_ENUM"
-  | "E_PARAM_REGEX"
-  | "E_PARAM_DEPENDENCY"
-  | "E_FIELD_EXISTENCE"
-  | "E_FIELD_DUPLICATE"
-  | "PRECHECK_TABLE_CONFLICT"
-  | "PRECHECK_PK_CONFLICT"
-  | "PRECHECK_ROUTE_OVERLAP"
-  | "PRECHECK_TASK_NAME_DUP"
-  | "PRECHECK_CHARSET_TZ_MISMATCH";
+  | (typeof FieldErrorCodes)[number]
+  | (typeof PrecheckCodes)[number];
 
 export interface FieldError {
   fieldPath: string;
@@ -86,7 +80,7 @@ export interface DataSourceWrite {
 export interface ConnectivityResult {
   reachable?: boolean;
   authenticated?: boolean;
-  /** 0.9.1: = reachable && authenticated (required once frozen). */
+  /** = reachable && authenticated (required as of v0.9.1). */
   valid?: boolean;
   latencyMs?: number;
   serverVersion?: string;

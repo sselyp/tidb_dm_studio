@@ -19,6 +19,8 @@ const FIELD_ERROR_LABELS: Record<FieldErrorCode, string> = {
   PRECHECK_ROUTE_OVERLAP: "源间 route-rules 目标范围相互覆盖",
   PRECHECK_TASK_NAME_DUP: "目标表名映射后同名",
   PRECHECK_CHARSET_TZ_MISMATCH: "上游字符集/时区不一致",
+  E_SOURCE_UNREACHABLE: "上游数据源不可达",
+  E_TARGET_AUTH_FAILED: "目标库鉴权失败",
 };
 
 export function fieldErrorLabel(code: FieldErrorCode): string {
@@ -36,8 +38,6 @@ const ENVELOPE_MESSAGES: Partial<Record<ErrorCodeName, string>> = {
   E_RATE_LIMITED: "操作过于频繁，请稍后再试",
   E_ACCOUNT_LOCKED: "账号已临时锁定，请稍后再试",
   E_DM_UNAVAILABLE: "DM 控制面不可用",
-  E_SOURCE_UNREACHABLE: "上游数据源不可达",
-  E_TARGET_AUTH_FAILED: "目标库鉴权失败",
 };
 
 export function envelopeMessage(code: number, fallback: string): string {
