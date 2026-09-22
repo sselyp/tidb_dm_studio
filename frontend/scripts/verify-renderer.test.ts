@@ -62,6 +62,15 @@ describe("schema shape (frozen D11 P0 example)", () => {
     ]).toEqual(["array", "string"]);
   });
 
+  it("source blockAllowList is array<BlockAllowList{schemaPattern,tablePattern}>", () => {
+    const node = resolveSchemaNode(root, "/sources/*/blockAllowList");
+    expect(node?.type).toBe("array");
+    const item = deref(root, node?.items);
+    expect(item?.additionalProperties).toBe(false);
+    expect(item?.required).toEqual(["schemaPattern", "tablePattern"]);
+    expect(Object.keys(item?.properties ?? {})).toEqual(["schemaPattern", "tablePattern"]);
+  });
+
   it("mydumpers item properties", () => {
     expect(
       Object.keys(
