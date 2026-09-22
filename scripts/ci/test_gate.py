@@ -10,13 +10,14 @@ Exit non-zero if any must_fail mutation is NOT caught, or a benign edit IS flagg
 """
 import copy
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECKER = os.path.join(HERE, "check_contract.py")
-TMP = os.path.join(HERE, "_gate_selftest")
 
 
 def load(path):
@@ -107,7 +108,7 @@ MUTATIONS = [
 def main():
     spec = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
     base = load(spec)
-    os.makedirs(TMP, exist_ok=True)
+    tmpdir = tempfile.mkdtemp(prefix="gate_selftest_")
     holes, fps, unapplied = [], [], []
     for name, mutate, must_fail in MUTATIONS:
         d = copy.deepcopy(base)
@@ -120,7 +121,7 @@ def main():
             else:
                 print(f"  SKIP          {name} (cannot apply: {e})")
             continue
-        p = os.path.join(TMP, "_m.yaml")
+        p = os.path.join(tmpdir, "_m.yaml")
         with open(p, "w", encoding="utf-8") as f:
             yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
         r = subprocess.run([sys.executable, CHECKER, p], capture_output=True, text=True)
@@ -133,6 +134,7 @@ def main():
             print(f"  FALSE-POSITIVE {name}")
         else:
             print(f"  OK            {name}")
+    shutil.rmtree(tmpdir, ignore_errors=True)
     print(
         f"\n{len(MUTATIONS)} mutations: {len(holes)} hole(s) [checker missed], "
         f"{len(unapplied)} unapplied [binding absent in spec], {len(fps)} false positive(s)"
