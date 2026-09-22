@@ -10,11 +10,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { devContractAssert } from "../api/contractAssert";
 import * as api from "../api/endpoints";
 import { envelopeMessage } from "../api/errorMessages";
 import { ApiError } from "../api/http";
 import type { DesiredState } from "../api/types";
 import StateTag from "../components/StateTag";
+import { ACTION_META, resolveAllowedActions } from "../components/taskActions";
 
 export default function TaskDetailPage() {
   const { name = "" } = useParams();
@@ -55,6 +57,17 @@ export default function TaskDetailPage() {
   const task = taskQuery.data?.data;
   const progressPct = status?.progress != null ? Math.round(status.progress * 100) : 0;
 
+  // Buttons follow the server's allowedActions; the state→action mapping is a
+  // dev-flagged compatibility path for older backends only.
+  const { actions } = resolveAllowedActions(status?.allowedActions, status?.state);
+  devContractAssert(
+    status === undefined || status.allowedActions !== undefined,
+    "task status is missing allowedActions; using frontend state→action fallback",
+  );
+  const stateActions = actions.filter(
+    (action) => ACTION_META[action].desiredState !== undefined,
+  );
+
   const exportYaml = async () => {
     try {
       setYaml(await api.exportTaskYaml(name));
@@ -77,24 +90,23 @@ export default function TaskDetailPage() {
           <StateTag state={status?.state} />
         </Space>
         <Space>
-          {(status?.state === "new" ||
-            status?.state === "stopped" ||
-            status?.state === "failed") && (
-            <Button type="primary" onClick={() => stateMutation.mutate("running")}>
-              启动
-            </Button>
-          )}
-          {status?.state === "running" && (
-            <Button onClick={() => stateMutation.mutate("paused")}>暂停</Button>
-          )}
-          {status?.state === "paused" && (
-            <Button type="primary" onClick={() => stateMutation.mutate("running")}>
-              恢复
-            </Button>
-          )}
-          {(status?.state === "running" || status?.state === "paused") && (
-            <Button onClick={() => stateMutation.mutate("stopped")}>停止</Button>
-          )}
+          {stateActions.map((action) => {
+            const meta = ACTION_META[action];
+            const desiredState = meta.desiredState as DesiredState;
+            return (
+              <Button
+                key={action}
+                type={meta.primary ? "primary" : "default"}
+                loading={
+                  stateMutation.isPending &&
+                  stateMutation.variables === desiredState
+                }
+                onClick={() => stateMutation.mutate(desiredState)}
+              >
+                {meta.label}
+              </Button>
+            );
+          })}
           <Button onClick={() => navigate(`/tasks/${name}/logs`)}>日志</Button>
           <Button onClick={exportYaml}>导出 YAML</Button>
         </Space>

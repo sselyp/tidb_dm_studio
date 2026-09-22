@@ -142,9 +142,17 @@ export interface TaskStatusData {
   lag?: number;
   lastError?: string | null;
   updatedAt?: string;
+  /** Server-authoritative action set (v0.9.2+); UI must not re-derive it. */
+  allowedActions?: TaskAction[];
 }
 
 export type DesiredState = "running" | "paused" | "stopped";
+
+/**
+ * Server-authoritative action set (reviewer ruling: buttons follow this, never a
+ * frontend state→action derivation). Enum pinned by the backend.
+ */
+export type TaskAction = "start" | "pause" | "resume" | "stop" | "delete";
 
 export interface StateRequest {
   desiredState: DesiredState;
@@ -153,7 +161,7 @@ export interface StateRequest {
 export interface StateData {
   currentState?: string;
   applied?: boolean;
-  allowedActions?: string[];
+  allowedActions?: TaskAction[];
 }
 
 export interface ValidationData {
