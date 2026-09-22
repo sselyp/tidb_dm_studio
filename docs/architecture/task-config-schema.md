@@ -149,6 +149,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `/validators` | array-table | `{global,mode,...}` | 版本相关待校准 |
 | `/exprFilter` | code-yaml | | 透传 |
 | `/relayDir` | input | | |
+| `/ignoreCheckItems` | multi-select | `string[]` | 跳过预检项（对齐 DM `ignore_checking_items`）；候选由服务端注入（`x-dm-compat.precheck.ignoreItemIds`），允许自定义 |
 | `/collationCompatible` | select | | 版本相关待校准 |
 
 > 其余 `task.yaml` 字段以 `additionalProperties:true` 保 round-trip：未上表单的键经 `code-yaml`（YAML 双视图）可见/可改，**不丢**。
