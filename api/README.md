@@ -4,9 +4,13 @@
 
 ```
 api/
-├── openapi.yaml        # 当前生效契约（版本记录在 info.version，如 0.6）
-├── check_contract.py   # 契约校验脚本（CI 与本地共用）
+├── openapi.yaml        # 当前生效契约（版本记录在 info.version，如 0.9）
+├── versions/           # 可选：历史快照 openapi-vX.Y.yaml（只读，不进 CI）
 └── README.md
+scripts/ci/
+├── check_contract.py   # 契约校验（CI 与本地共用）
+└── gen_error_codes.py  # 由 x-error-codes 生成前端常量
+frontend/src/api/errorCodes.ts   # 生成物，勿手改
 ```
 
 ## 约定
@@ -19,10 +23,11 @@ api/
 ## 校验
 
 ```bash
-python3 api/check_contract.py api/openapi.yaml
+python3 scripts/ci/check_contract.py api/openapi.yaml
+python3 scripts/ci/gen_error_codes.py   # 生成 frontend/src/api/errorCodes.ts
 ```
 
-CI: `.github/workflows/ci.yml` 的 `contract` job（`api/openapi.yaml` 存在时执行）。
+CI: `.github/workflows/ci.yml` 的 `contract` job。
 
 ## 已定稿要点（v0.6）
 

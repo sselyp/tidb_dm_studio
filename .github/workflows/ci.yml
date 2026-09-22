@@ -15,10 +15,18 @@ jobs:
           python-version: "3.12"
       - name: Contract check
         run: |
-          if [ -f api/openapi.yaml ]; then
-            python3 api/check_contract.py api/openapi.yaml
+          if [ -f scripts/ci/check_contract.py ]; then
+            python3 scripts/ci/check_contract.py api/openapi.yaml
           else
-            echo "api/openapi.yaml not present yet, skipping"
+            echo "scripts/ci/check_contract.py not present yet, skipping"
+          fi
+      - name: Generated constants up-to-date
+        run: |
+          if [ -f scripts/ci/gen_error_codes.py ]; then
+            python3 scripts/ci/gen_error_codes.py
+            git diff --exit-code
+          else
+            echo "scripts/ci/gen_error_codes.py not present yet, skipping"
           fi
 
   backend:
