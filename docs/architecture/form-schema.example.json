@@ -1,0 +1,194 @@
+{
+  "version": "0.9.0",
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/sselyp/tidb_dm_studio/schemas/task-config.json",
+    "title": "TaskConfig",
+    "type": "object",
+    "additionalProperties": true,
+    "required": ["name", "taskMode", "sources"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+      "taskMode": { "type": "string", "enum": ["all", "full", "incremental"], "default": "all" },
+      "caseSensitive": { "type": "boolean", "default": false },
+      "metaSchema": { "type": "string" },
+      "timezone": { "type": "string" },
+      "targetDatabase": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["host", "port", "user"],
+        "properties": {
+          "host": { "type": "string" },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "user": { "type": "string" },
+          "password": { "type": "string", "writeOnly": true },
+          "session": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "sources": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "$ref": "#/$defs/SourceInstance" }
+      },
+      "routes": { "type": "array", "items": { "$ref": "#/$defs/RouteRule" } },
+      "blockAllowList": { "type": "array", "items": { "$ref": "#/$defs/BlockAllowList" } },
+      "filters": { "$ref": "#/$defs/FilterList" },
+      "expressionFilter": { "type": "array", "items": { "$ref": "#/$defs/ExpressionFilter" } },
+      "mydumpers": { "$ref": "#/$defs/SourceOverride" },
+      "loaders": { "$ref": "#/$defs/SourceOverride" },
+      "syncers": { "$ref": "#/$defs/SourceOverride" },
+      "onlineDdl": { "type": "boolean", "default": true },
+      "relayDir": { "type": "string" }
+    },
+    "$defs": {
+      "SourceInstance": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["sourceRef"],
+        "properties": {
+          "sourceRef": { "type": "string", "minLength": 1 },
+          "metaSnapshot": { "$ref": "#/$defs/BinlogPosition" },
+          "binlogName": { "type": "string" },
+          "binlogPos": { "type": "integer", "minimum": 0 },
+          "binlogGtid": { "type": "string" },
+          "routeRules": { "type": "array", "items": { "type": "string" } },
+          "blockAllowList": { "type": "array", "items": { "$ref": "#/$defs/BlockAllowList" } },
+          "filters": { "$ref": "#/$defs/FilterList" },
+          "expressionFilter": { "type": "array", "items": { "$ref": "#/$defs/ExpressionFilter" } }
+        }
+      },
+      "BinlogPosition": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "binlogName": { "type": "string" },
+          "binlogPos": { "type": "integer", "minimum": 0 },
+          "binlogGtid": { "type": "string" }
+        }
+      },
+      "RouteRule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaPattern", "tablePattern"],
+        "properties": {
+          "schemaPattern": { "type": "string" },
+          "tablePattern": { "type": "string" },
+          "targetSchema": { "type": "string" },
+          "targetTable": { "type": "string" }
+        }
+      },
+      "BlockAllowList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaPattern", "tablePattern"],
+        "properties": {
+          "schemaPattern": { "type": "string" },
+          "tablePattern": { "type": "string" }
+        }
+      },
+      "FilterList": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "expression": { "type": "string" }
+          }
+        }
+      },
+      "ExpressionFilter": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaPattern", "tablePattern", "expression"],
+        "properties": {
+          "schemaPattern": { "type": "string" },
+          "tablePattern": { "type": "string" },
+          "expression": { "type": "string" }
+        }
+      },
+      "SourceOverride": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": { "global": { "type": "boolean" } }
+        }
+      }
+    }
+  },
+  "formLayout": {
+    "steps": [
+      {
+        "key": "basic",
+        "title": "基础信息",
+        "groups": [
+          { "key": "meta", "title": "任务元信息", "fields": ["/name", "/taskMode"] },
+          { "key": "flags", "title": "全局开关", "fields": ["/caseSensitive", "/metaSchema", "/timezone"] }
+        ]
+      },
+      {
+        "key": "sources",
+        "title": "上游数据源",
+        "description": "单库填 1 项；多库合并填多项，每项可覆盖全局配置。",
+        "groups": [
+          { "key": "list", "title": "源实例", "fields": ["/sources"] }
+        ]
+      },
+      {
+        "key": "sync-objects",
+        "title": "同步对象",
+        "groups": [
+          { "key": "route", "title": "库表路由", "fields": ["/routes"] },
+          { "key": "scope", "title": "同步范围", "fields": ["/blockAllowList"] },
+          { "key": "filter", "title": "过滤规则", "fields": ["/filters", "/expressionFilter"] }
+        ]
+      },
+      {
+        "key": "advanced",
+        "title": "高级参数",
+        "groups": [
+          { "key": "target", "title": "下游 TiDB", "fields": ["/targetDatabase"] },
+          { "key": "threads", "title": "线程与限流", "fields": ["/mydumpers", "/loaders", "/syncers"] },
+          { "key": "ddl", "title": "DDL 与杂项", "fields": ["/onlineDdl", "/relayDir"] }
+        ]
+      }
+    ],
+    "ui": {
+      "/name": { "widget": "input", "placeholder": "如: prod-mysql-to-tidb", "help": "任务名全局唯一，仅字母数字下划线短横线" },
+      "/taskMode": {
+        "widget": "radio",
+        "help": "all=全量+增量；full=仅全量；incremental=仅增量",
+        "options": [
+          { "label": "全量 + 增量", "value": "all" },
+          { "label": "仅全量", "value": "full" },
+          { "label": "仅增量", "value": "incremental" }
+        ]
+      },
+      "/caseSensitive": { "widget": "switch" },
+      "/metaSchema": { "widget": "input", "advanced": true },
+      "/timezone": { "widget": "select", "advanced": true },
+      "/sources": { "widget": "array-table", "itemTitle": "sourceRef", "help": "至少 1 个源；每项支持覆盖全局 route/filter/线程配置" },
+      "/sources/*/sourceRef": { "widget": "select", "help": "引用「数据源管理」中已配置并预检通过的连接" },
+      "/sources/*/metaSnapshot": { "widget": "key-value", "advanced": true, "help": "全量迁移起点快照" },
+      "/sources/*/binlogName": { "widget": "input", "visibleWhen": { "field": "/taskMode", "in": ["incremental", "all"] } },
+      "/sources/*/binlogPos": { "widget": "number", "visibleWhen": { "field": "/taskMode", "in": ["incremental", "all"] } },
+      "/sources/*/binlogGtid": { "widget": "input", "visibleWhen": { "field": "/taskMode", "in": ["incremental", "all"] }, "help": "与 binlogName/binlogPos 二选一" },
+      "/sources/*/routeRules": { "widget": "multi-select", "advanced": true, "help": "覆盖全局 routes" },
+      "/sources/*/blockAllowList": { "widget": "array-table", "advanced": true },
+      "/sources/*/filters": { "widget": "multi-select", "advanced": true },
+      "/sources/*/expressionFilter": { "widget": "array-table", "advanced": true },
+      "/routes": { "widget": "array-table", "itemTitle": "schemaPattern" },
+      "/blockAllowList": { "widget": "array-table", "itemTitle": "schemaPattern" },
+      "/filters": { "widget": "array-table", "itemTitle": "name" },
+      "/expressionFilter": { "widget": "array-table", "itemTitle": "schemaPattern" },
+      "/targetDatabase": { "widget": "key-value", "help": "下游 TiDB 连接；password 加密存储、永不回显" },
+      "/mydumpers": { "widget": "array-table" },
+      "/loaders": { "widget": "array-table" },
+      "/syncers": { "widget": "array-table" },
+      "/onlineDdl": { "widget": "switch", "help": "DM 2.0 默认开启；具体字段随版本校准" },
+      "/relayDir": { "widget": "input", "advanced": true }
+    }
+  }
+}
