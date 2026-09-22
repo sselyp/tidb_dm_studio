@@ -13,6 +13,8 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 `version` 跟随 `api/openapi.yaml` 的 `info.version`（当前 `0.9.0`），前端据此判断是否需重取。
 写侧提交体（已冻结）：`{ name, config: TaskConfig }`，其中 `config.sources[]` 复用读侧 `SourceInstance`。
 
+> **`name` 归属（已冻结）**：`name` **只存在于写侧顶层 `TaskWrite.name`，不属于 `TaskConfig`**。因此 `jsonSchema`（= `TaskConfig`）**不含 `name`**（既不在 `properties` 也不在 `required`）；`formLayout` 里的 `/name` 是**特殊只写指针**，渲染器遇 `/name` 绑定顶层 `TaskWrite.name`、不向 `config` 取值。`TaskWrite` 顶层 required `name`、`config` 内 required `[taskMode, sources]`。
+
 ## 2. 响应结构
 
 > **shape 定稿（D11）**：`jsonSchema` 是**纯标准 JSON Schema**（draft 2020-12），**属性内不嵌 `x-ui-*`**；所有 UI 提示放 `formLayout`。二者以 JSON Pointer 关联。
@@ -106,7 +108,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 ### Step 1 基础信息
 | Pointer | widget | 取值/默认 | 说明 |
 |---|---|---|---|
-| `/name` | input | string, 必填 | 任务名，全局唯一 |
+| `/name` | input | string, 必填 | 任务名，全局唯一；**特殊指针，绑定写侧顶层 `TaskWrite.name`，不在 `config` 内** |
 | `/taskMode` | radio | `all`(默认)/`full`/`incremental` | 任务模式 |
 | `/caseSensitive` | switch | bool, 默认 false | 大小写敏感 |
 | `/metaSchema` | input | string | 库表信息所在库，默认同下游 |

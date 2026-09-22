@@ -6,9 +6,8 @@
     "title": "TaskConfig",
     "type": "object",
     "additionalProperties": true,
-    "required": ["name", "taskMode", "sources"],
+    "required": ["taskMode", "sources"],
     "properties": {
-      "name": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]+$" },
       "taskMode": { "type": "string", "enum": ["all", "full", "incremental"], "default": "all" },
       "caseSensitive": { "type": "boolean", "default": false },
       "metaSchema": { "type": "string" },
