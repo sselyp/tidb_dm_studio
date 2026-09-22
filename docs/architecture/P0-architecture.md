@@ -39,6 +39,7 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 | D8 | 合并冲突 | 以稳定 `PRECHECK_*` 码进 `ValidationData` 告警（表名/主键冲突、route-rules 覆盖、同名 task、字符集/时区不一致） |
 | D9 | 错误体 | 统一 `data.errors`；码见 §4 |
 | D10 | 工程约束 | 不硬编码地址/密钥；配置走 env / 配置文件，仓库只留 `.env.example`；License/依赖合规过评审 |
+| D11 | schema shape | **`jsonSchema` 只放标准 JSON Schema（draft 2020-12），属性内不嵌 `x-ui-*`**；UI 提示独立于 `formLayout`，键为 JSON Pointer。理由：`jsonSchema` 需被 `/task-validate` 与通用校验器直接复用，厂商扩展会污染校验语义；UI 关注点与校验关注点分离，可各自演进 |
 
 ## 4. 错误码
 
@@ -70,7 +71,7 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 ## 7. 待补充
 
 - [ ] DM 版本与 dm-master/dm-worker 拓扑（待 @易鹏）→ 校准 precheck 项与 API 版本差异
-- [ ] 全参数 JSON Schema 与字段清单
+- [~] 全参数 JSON Schema 与字段清单（结构已冻结，见 D11 + `task-config-schema.md`；版本相关字段 `online-ddl`/`validators` 待 DM 版本校准）
 - [ ] 页面契约（向导步骤、监控页字段）
 - [ ] 依赖清单与 License 合规（@DS-代码审核）
 

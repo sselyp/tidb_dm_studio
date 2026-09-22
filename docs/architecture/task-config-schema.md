@@ -15,6 +15,8 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 
 ## 2. 响应结构
 
+> **shape 定稿（D11）**：`jsonSchema` 是**纯标准 JSON Schema**（draft 2020-12），**属性内不嵌 `x-ui-*`**；所有 UI 提示放 `formLayout`。二者以 JSON Pointer 关联。
+
 ```jsonc
 {
   "version": "0.9.0",
