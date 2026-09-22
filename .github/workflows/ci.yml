@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install python deps
+        run: python3 -m pip install --quiet pyyaml
       - name: Contract check
         run: |
           if [ -f scripts/ci/check_contract.py ]; then
@@ -27,6 +29,13 @@ jobs:
             git diff --exit-code
           else
             echo "scripts/ci/gen_error_codes.py not present yet, skipping"
+          fi
+      - name: Gate self-test (mutation regression)
+        run: |
+          if [ -f scripts/ci/check_contract.py ] && [ -f api/openapi.yaml ]; then
+            python3 scripts/ci/test_gate.py api/openapi.yaml
+          else
+            echo "check_contract.py or api/openapi.yaml missing, skipping gate self-test"
           fi
 
   backend:
