@@ -144,6 +144,20 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 - 前端即时校验（必填/类型/范围/正则）来自 `jsonSchema`；冲突类规则**不前端自造**。
 - 权威判据是服务端 `validate` / `check-task` 返回的 `PRECHECK_*`；`ValidationData.valid` + `data.errors[].errorCode` 驱动标红。
 - 字段级错误：`FieldError.errorCode`（`E_* ∪ PRECHECK_*`，已 `enum` 冻结）→ `errorCodes.ts` 常量映射文案。
+
+### 6.1 JSON Schema 关键字 → 字段码（定稿，供负例断言）
+
+| jsonSchema 关键字 | `ruleCode` | `errorCode` |
+|---|---|---|
+| 缺失 `required` 字段 | `REQUIRED` | `E_FIELD_REQUIRED` |
+| `minimum`/`maximum`/`minLength`/`maxLength`/**`minItems`**/`maxItems` | `RANGE` | `E_PARAM_RANGE` |
+| `enum` | `ENUM` | `E_PARAM_ENUM` |
+| `pattern` | `REGEX` | `E_PARAM_REGEX` |
+| 条件依赖（`visibleWhen` 对应的服务端规则） | `DEPENDENCY` | `E_PARAM_DEPENDENCY` |
+| 引用对象不存在（如 `sourceRef`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
+
+- 信封码恒为 `42201 E_VALIDATION_FAILED`（HTTP 422）；字段细节只在 `data.errors[]`。
+- 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
 
 ## 7. 待校准（依赖 DM 版本）
