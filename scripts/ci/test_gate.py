@@ -129,6 +129,22 @@ for _code in (
         )
     )
 
+# allowedActions must stay a server-authoritative stable enum (D15).
+MUTATIONS += [
+    ("StateData.allowedActions back to free string[]", lambda d: d["components"]["schemas"]["StateData"]["properties"]["allowedActions"].__setitem__("items", {"type": "string"}), True),
+    ("drop allowedActions from TaskStatusData (status has no action source)", lambda d: d["components"]["schemas"]["TaskStatusData"]["properties"].pop("allowedActions", None), True),
+    ("AllowedAction enum loses 'resume'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].remove("resume"), True),
+    ("AllowedAction enum gains bogus 'restart'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].append("restart"), True),
+]
+
+# D16 redline: read models must not echo credentials; request credentials stay writeOnly.
+MUTATIONS += [
+    ("Task response exposes password (D16 regression)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("DataSource response exposes target_config.password (D16)", lambda d: d["components"]["schemas"]["DataSource"]["properties"].__setitem__("targetConfig", {"type": "object", "properties": {"password": {"type": "string"}}}), True),
+    ("x-credential-handling redline removed", lambda d: d.pop("x-credential-handling", None), True),
+    ("DataSourceWrite.password loses writeOnly (echoable input)", lambda d: d["components"]["schemas"]["DataSourceWrite"]["properties"]["password"].pop("writeOnly", None), True),
+]
+
 
 def main():
     spec = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
