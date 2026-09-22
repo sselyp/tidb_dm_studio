@@ -171,7 +171,8 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `enum` | `ENUM` | `E_PARAM_ENUM` |
 | `pattern` | `REGEX` | `E_PARAM_REGEX` |
 | 条件依赖（`visibleWhen` 对应的服务端规则） | `DEPENDENCY` | `E_PARAM_DEPENDENCY` |
-| 引用对象不存在（如 `sourceRef`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
+| 数组内 unique 键重复（如 `/routes[*].name`、`/filters[*].name`） | `UNIQUE` | `E_FIELD_DUPLICATE` |
+| 引用对象不存在（`/sources[*].sourceRef`、`/sources/*/filters[j]`、`/sources/*/routeRules[j]`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
 
 - 信封码恒为 `42201 E_VALIDATION_FAILED`（HTTP 422）；字段细节只在 `data.errors[]`。
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
