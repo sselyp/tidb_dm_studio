@@ -58,6 +58,28 @@ export function newIdempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+export type AuthEvent = "unauthenticated" | "password_change_required";
+
+let authEventHandler: ((event: AuthEvent) => void) | undefined;
+
+/** Installed once by AuthProvider to react to session/CSRF auth failures. */
+export function setAuthEventHandler(
+  handler: ((event: AuthEvent) => void) | undefined,
+): void {
+  authEventHandler = handler;
+}
+
+function notifyAuthFailure(path: string, status: number, code: number): void {
+  if (path === "/login") {
+    return;
+  }
+  if (status === 401) {
+    authEventHandler?.("unauthenticated");
+  } else if (code === ErrorCodes.E_PASSWORD_CHANGE_REQUIRED.code) {
+    authEventHandler?.("password_change_required");
+  }
+}
+
 export async function request<T>(
   path: string,
   opts: RequestOptions = {},
@@ -110,6 +132,7 @@ export async function request<T>(
     const errors =
       (env?.data as { errors?: FieldError[] } | null | undefined)?.errors ?? [];
     const retryAfterHeader = res.headers.get("Retry-After");
+    notifyAuthFailure(path, res.status, code);
     throw new ApiError(
       res.status,
       code,
@@ -143,6 +166,7 @@ export async function requestText(
     signal: opts.signal,
   });
   if (!res.ok) {
+    notifyAuthFailure(path, res.status, res.status * 100);
     throw new ApiError(res.status, res.status * 100, res.statusText);
   }
   return res.text();

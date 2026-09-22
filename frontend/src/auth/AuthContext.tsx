@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import * as api from "../api/endpoints";
+import { ApiError, setAuthEventHandler } from "../api/http";
 import type { MeData } from "../api/types";
 
 interface AuthContextValue {
@@ -30,8 +31,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await api.getMe();
       setMe(data);
-    } catch {
-      setMe(null);
+    } catch (error) {
+      // Only a 401 means the session is gone; transient/network errors must not
+      // silently sign the user out.
+      if (error instanceof ApiError && error.http === 401) {
+        setMe(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -39,6 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  // Global auth-failure hook: expired session -> back to /login; forced
+  // password change -> re-check /me so the router redirects to /account.
+  useEffect(() => {
+    setAuthEventHandler((event) => {
+      if (event === "unauthenticated") {
+        setMe(null);
+      } else if (event === "password_change_required") {
+        void refresh();
+      }
+    });
+    return () => setAuthEventHandler(undefined);
   }, [refresh]);
 
   const login = useCallback(async (username: string, password: string) => {
