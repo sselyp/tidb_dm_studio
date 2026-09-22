@@ -8,11 +8,13 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
+import { devContractAssert } from "../api/contractAssert";
 import * as api from "../api/endpoints";
 import { envelopeMessage } from "../api/errorMessages";
 import { ApiError } from "../api/http";
 import type { DesiredState, TaskSummary } from "../api/types";
 import StateTag from "../components/StateTag";
+import { ACTION_META, resolveAllowedActions } from "../components/taskActions";
 
 export default function TasksPage() {
   const { message } = AntApp.useApp();
@@ -84,75 +86,54 @@ export default function TasksPage() {
       title: "操作",
       key: "actions",
       align: "right",
-      render: (_, r) => (
-        <Space>
-          <Button size="small" onClick={() => navigate(`/tasks/${r.name}`)}>
-            详情
-          </Button>
-          {(r.state === "new" ||
-            r.state === "stopped" ||
-            r.state === "failed") && (
-            <Button
-              size="small"
-              onClick={() =>
-                stateMutation.mutate({
-                  name: r.name,
-                  desiredState: "running",
-                })
-              }
-            >
-              启动
+      render: (_, r) => {
+        // D15: the server owns the action set; the state mapping is a dev-only
+        // compatibility fallback for list responses that omit `allowedActions`.
+        const { actions, compat } = resolveAllowedActions(r.allowedActions, r.state);
+        devContractAssert(
+          r.allowedActions !== undefined,
+          "task list item is missing allowedActions; using frontend state→action fallback",
+        );
+        const stateActions = actions.filter(
+          (action) => ACTION_META[action].desiredState !== undefined,
+        );
+        return (
+          <Space>
+            <Button size="small" onClick={() => navigate(`/tasks/${r.name}`)}>
+              详情
             </Button>
-          )}
-          {r.state === "running" && (
-            <Button
-              size="small"
-              onClick={() =>
-                stateMutation.mutate({
-                  name: r.name,
-                  desiredState: "paused",
-                })
-              }
-            >
-              暂停
-            </Button>
-          )}
-          {r.state === "paused" && (
-            <Button
-              size="small"
-              onClick={() =>
-                stateMutation.mutate({
-                  name: r.name,
-                  desiredState: "running",
-                })
-              }
-            >
-              恢复
-            </Button>
-          )}
-          {(r.state === "running" || r.state === "paused") && (
-            <Button
-              size="small"
-              onClick={() =>
-                stateMutation.mutate({
-                  name: r.name,
-                  desiredState: "stopped",
-                })
-              }
-            >
-              停止
-            </Button>
-          )}
-          <Popconfirm
-            title="确认删除该任务？"
-            onConfirm={() => deleteMutation.mutate(r.name)}
-          >
-            <Button size="small" danger>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            {stateActions.map((action) => {
+              const meta = ACTION_META[action];
+              const desiredState = meta.desiredState as DesiredState;
+              return (
+                <Button
+                  key={action}
+                  size="small"
+                  type={meta.primary ? "primary" : "default"}
+                  loading={
+                    stateMutation.isPending &&
+                    stateMutation.variables?.name === r.name &&
+                    stateMutation.variables.desiredState === desiredState
+                  }
+                  onClick={() => stateMutation.mutate({ name: r.name, desiredState })}
+                >
+                  {meta.label}
+                </Button>
+              );
+            })}
+            {(compat || actions.includes("delete")) && (
+              <Popconfirm
+                title="确认删除该任务？"
+                onConfirm={() => deleteMutation.mutate(r.name)}
+              >
+                <Button size="small" danger>
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 

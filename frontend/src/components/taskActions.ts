@@ -19,6 +19,9 @@ export const ACTION_META: Record<TaskAction, ActionMeta> = {
  * Compatibility fallback only. The server owns `allowedActions`; this mirrors
  * the state machine just so the UI still works against older backends. Every
  * call site goes through `resolveAllowedActions`, which prefers the server set.
+ *
+ * TODO(D15): remove once every status/list response carries `allowedActions`
+ * (backend single source), so no state→action derivation remains in the UI.
  */
 export function compatActions(state: TaskState | undefined): TaskAction[] {
   switch (state) {

@@ -1,4 +1,4 @@
-// Types mirroring api/openapi.yaml (v0.9.0). Keep in sync with the contract.
+// Types mirroring api/openapi.yaml (v0.9.2). Keep in sync with the contract.
 
 import { FieldErrorCodes, PrecheckCodes } from "./errorCodes";
 
@@ -89,9 +89,11 @@ export interface ConnectivityResult {
 
 export interface SourceInstance {
   sourceRef: string;
-  routeRules?: Array<Record<string, unknown>>;
+  /** Names referencing `/routes[*].name` on the task config (D11 §4.3). */
+  routeRules?: string[];
   blockAllowList?: Record<string, unknown>;
-  filters?: Array<Record<string, unknown>>;
+  /** Names referencing `/filters[*].name` on the task config (D11 §4.3). */
+  filters?: string[];
   binlogPosition?: Record<string, unknown> | null;
   metaSnapshot?: string | null;
 }
@@ -131,6 +133,12 @@ export interface TaskSummary {
   nativeState?: NativeState;
   lag?: number;
   sourceCount?: number;
+  /**
+   * Server-authoritative action set (D15) when the list endpoint provides it.
+   * Optional: today only the status/state endpoints return it, so the list
+   * falls back to `resolveAllowedActions`' state mapping until then.
+   */
+  allowedActions?: TaskAction[];
 }
 
 export interface TaskStatusData {
