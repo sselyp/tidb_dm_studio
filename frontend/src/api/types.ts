@@ -157,8 +157,45 @@ export interface SchemaData {
   version?: string;
   mode?: string;
   jsonSchema?: Record<string, unknown>;
-  formLayout?: Record<string, unknown>;
+  formLayout?: FormLayout;
 }
+
+/** A UI hint, keyed by JSON Pointer in formLayout.ui. */
+export interface UiField {
+  widget?: string;
+  help?: string;
+  placeholder?: string;
+  options?: Array<{ label: string; value: unknown }>;
+  visibleWhen?: VisibleWhen;
+  advanced?: boolean;
+  unit?: string;
+  order?: number;
+  itemTitle?: string;
+}
+
+export type VisibleWhen =
+  | { field: string; in: unknown[] }
+  | { all: VisibleWhen[] }
+  | { any: VisibleWhen[] };
+
+export interface FormGroup {
+  key: string;
+  title: string;
+  fields: string[];
+}
+
+export interface FormStep {
+  key: string;
+  title: string;
+  description?: string;
+  groups: FormGroup[];
+}
+
+export interface FormLayout {
+  steps?: FormStep[];
+  ui?: Record<string, UiField>;
+}
+
 
 export interface LogPageData {
   items: string[];

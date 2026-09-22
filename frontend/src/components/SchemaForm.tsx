@@ -1,199 +1,111 @@
-import { Form, Input, InputNumber, Select, Switch } from "antd";
-
-/**
- * Schema-driven form renderer.
- *
- * Consumes the payload of `GET /task-schema` (`data.jsonSchema` + `data.formLayout`).
- * The exact field-level shape is still being finalised in P0; this renderer
- * implements the following documented assumption and is isolated here so it can
- * be adapted without touching pages:
- *
- *   jsonSchema: { properties: { <name>: { type, enum?, default?, description?,
- *                                       "x-ui"?: { label?, help?, widget?, options?, placeholder? } } } }
- *   formLayout: { groups: [ { key, title, fields: [<name>...] } ] }
- *
- * Only scalar widgets are handled here; the multi-source array is rendered by a
- * dedicated editor (see SourcesEditor). Unknown widgets fall back to text.
- */
-export interface UiHints {
-  label?: string;
-  help?: string;
-  widget?: "input" | "textarea" | "number" | "select" | "switch" | "json";
-  options?: Array<{ value: string | number | boolean; label?: string }>;
-  placeholder?: string;
-}
-
-export interface JsonSchemaNode {
-  type?: string;
-  title?: string;
-  description?: string;
-  default?: unknown;
-  enum?: Array<string | number>;
-  properties?: Record<string, JsonSchemaNode>;
-  items?: JsonSchemaNode;
-  "x-ui"?: UiHints;
-}
-
-export interface FormLayoutGroup {
-  key: string;
-  title: string;
-  fields: string[];
-}
-
-export interface FormLayout {
-  groups?: FormLayoutGroup[];
-}
+import { Collapse, Form, Typography } from "antd";
+import type { FormLayout, UiField } from "../api/types";
+import ArrayTableField from "./ArrayTableField";
+import {
+  evalVisibleWhen,
+  getByPointer,
+  inferredWidget,
+  resolveSchemaNode,
+  type JsonSchemaNode,
+} from "./schemaUtils";
+import WidgetControl from "./WidgetControl";
 
 interface Props {
-  schema?: Record<string, unknown>;
-  layout?: Record<string, unknown>;
+  jsonSchema?: Record<string, unknown>;
+  layout?: FormLayout;
+  group: { key: string; title: string; fields: string[] };
   value: Record<string, unknown>;
-  onChange: (name: string, value: unknown) => void;
+  onChange: (pointer: string, value: unknown) => void;
   disabled?: boolean;
+  dynamicOptions?: Record<string, Array<{ value: string; label: string }>>;
 }
 
-function resolveOptions(
-  node: JsonSchemaNode,
-  ui?: UiHints,
-): Array<{ value: string | number | boolean; label: string }> {
-  if (ui?.options && ui.options.length > 0) {
-    return ui.options.map((o) => ({
-      value: o.value,
-      label: o.label ?? String(o.value),
-    }));
+function fieldLabel(node: JsonSchemaNode, pointer: string): string {
+  if (node.title) {
+    return node.title;
   }
-  return (node.enum ?? []).map((v) => ({ value: v, label: String(v) }));
-}
-
-function FieldControl({
-  name,
-  node,
-  value,
-  onChange,
-  disabled,
-}: {
-  name: string;
-  node: JsonSchemaNode;
-  value: unknown;
-  onChange: (name: string, value: unknown) => void;
-  disabled?: boolean;
-}) {
-  const ui = node["x-ui"];
-  const widget =
-    ui?.widget ??
-    (node.enum
-      ? "select"
-      : node.type === "boolean"
-        ? "switch"
-        : node.type === "number" || node.type === "integer"
-          ? "number"
-          : "input");
-
-  switch (widget) {
-    case "switch":
-      return (
-        <Switch
-          checked={Boolean(value)}
-          disabled={disabled}
-          onChange={(checked) => onChange(name, checked)}
-        />
-      );
-    case "number":
-      return (
-        <InputNumber
-          style={{ width: "100%" }}
-          value={value as number | undefined}
-          disabled={disabled}
-          placeholder={ui?.placeholder}
-          onChange={(v) => onChange(name, v ?? undefined)}
-        />
-      );
-    case "select":
-      return (
-        <Select
-          style={{ width: "100%" }}
-          value={value as string | undefined}
-          disabled={disabled}
-          placeholder={ui?.placeholder}
-          options={resolveOptions(node, ui)}
-          onChange={(v) => onChange(name, v)}
-        />
-      );
-    case "textarea":
-    case "json":
-      return (
-        <Input.TextArea
-          value={value as string | undefined}
-          disabled={disabled}
-          placeholder={ui?.placeholder}
-          autoSize={{ minRows: 3, maxRows: 8 }}
-          onChange={(e) => onChange(name, e.target.value)}
-        />
-      );
-    default:
-      return (
-        <Input
-          value={value as string | undefined}
-          disabled={disabled}
-          placeholder={ui?.placeholder}
-          onChange={(e) => onChange(name, e.target.value)}
-        />
-      );
-  }
+  const parts = pointer.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? pointer;
 }
 
 export default function SchemaForm({
-  schema,
+  jsonSchema,
   layout,
+  group,
   value,
   onChange,
   disabled,
+  dynamicOptions,
 }: Props) {
-  const root = schema as JsonSchemaNode | undefined;
-  const properties = root?.properties ?? {};
-  const groups = (layout as FormLayout | undefined)?.groups;
+  const root = jsonSchema as JsonSchemaNode | undefined;
 
-  const fieldNames = groups
-    ? groups.flatMap((g) => g.fields)
-    : Object.keys(properties);
-
-  const renderField = (name: string) => {
-    const node = properties[name];
+  const renderField = (pointer: string) => {
+    const node = resolveSchemaNode(root, pointer);
     if (!node) {
       return null;
     }
-    const ui = node["x-ui"];
-    const label = ui?.label ?? node.title ?? name;
+    const ui: UiField | undefined = layout?.ui?.[pointer];
+    if (!evalVisibleWhen(ui?.visibleWhen, value)) {
+      return null;
+    }
+    const widget = inferredWidget(node, ui);
+    const current = getByPointer(value, pointer);
+    const help = ui?.help ?? node.description;
+
     return (
       <Form.Item
-        key={name}
-        label={label}
-        help={ui?.help ?? node.description}
+        key={pointer}
+        label={fieldLabel(node, pointer)}
+        help={help}
         style={{ marginBottom: 18 }}
       >
-        <FieldControl
-          name={name}
-          node={node}
-          value={value[name]}
-          onChange={onChange}
-          disabled={disabled}
-        />
+        {widget === "array-table" ? (
+          <ArrayTableField
+            pointer={pointer}
+            node={node}
+            root={root}
+            ui={layout?.ui}
+            value={Array.isArray(current) ? current : []}
+            disabled={disabled}
+            formValue={value}
+            dynamicOptions={dynamicOptions}
+            onChange={(v) => onChange(pointer, v)}
+          />
+        ) : (
+          <WidgetControl
+            widget={widget}
+            node={node}
+            ui={ui}
+            value={current}
+            disabled={disabled}
+            onChange={(v) => onChange(pointer, v)}
+          />
+        )}
       </Form.Item>
     );
   };
 
-  if (groups && groups.length > 0) {
-    return (
-      <>
-        {groups.map((group) => (
-          <div key={group.key} style={{ marginBottom: 24 }}>
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>{group.title}</div>
-            {group.fields.map(renderField)}
-          </div>
-        ))}
-      </>
-    );
-  }
+  const normal = group.fields.filter((p) => !layout?.ui?.[p]?.advanced);
+  const advanced = group.fields.filter((p) => layout?.ui?.[p]?.advanced);
 
-  return <>{fieldNames.map(renderField)}</>;
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <Typography.Text strong style={{ display: "block", marginBottom: 12 }}>
+        {group.title}
+      </Typography.Text>
+      {normal.map(renderField)}
+      {advanced.length > 0 && (
+        <Collapse
+          ghost
+          items={[
+            {
+              key: "advanced",
+              label: "高级",
+              children: advanced.map(renderField),
+            },
+          ]}
+        />
+      )}
+    </div>
+  );
 }
