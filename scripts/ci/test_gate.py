@@ -129,6 +129,14 @@ for _code in (
         )
     )
 
+# allowedActions must stay a server-authoritative stable enum (reviewer: no free string[]).
+MUTATIONS += [
+    ("StateData.allowedActions back to free string[]", lambda d: d["components"]["schemas"]["StateData"]["properties"]["allowedActions"].__setitem__("items", {"type": "string"}), True),
+    ("drop allowedActions from TaskStatusData (status has no action source)", lambda d: d["components"]["schemas"]["TaskStatusData"]["properties"].pop("allowedActions", None), True),
+    ("AllowedAction enum loses 'resume'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].remove("resume"), True),
+    ("AllowedAction enum gains bogus 'restart'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].append("restart"), True),
+]
+
 
 def main():
     spec = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"

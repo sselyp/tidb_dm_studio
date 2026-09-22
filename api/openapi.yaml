@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: TiDB DM 可视化平台 API
-  version: 0.9.2
+  version: 0.9.3
   description: |
-    后端接口契约 v0.9.2（对齐 DM v7.1.6，见 x-dm-compat）。
+    后端接口契约 v0.9.3（对齐 DM v7.1.6，见 x-dm-compat）。
     cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
     状态码为权威；code=0 仅表示请求已处理；错误统一 data.errors；字段错误码见 x-field-error-codes。
     诊断端点（/task-validate、/task-precheck 各 level、/datasources/test）body 可解析为对象即恒 200 + data.valid；非 JSON/非对象 → 400。
@@ -641,12 +641,26 @@ components:
       required: [desiredState]
       properties:
         desiredState: { type: string, enum: [running, paused, stopped] }
+    AllowedAction:
+      type: string
+      enum: [start, pause, resume, stop, delete]
+      description: >-
+        服务端权威的可用动作稳定枚举：前端据此渲染动作按钮，不得从 state 自推
+        （与预检码、状态推导同一「权威在服务端」原则）。
+        start=下发或重跑（new；stopped/finished 可重跑；failed 由服务端判定可重跑时给出，前端不特判 failed）；
+        pause=running→pause-task；resume=paused→resume-task；stop=running|paused→stop-task；
+        delete=仅非运行态（new/stopped/finished/failed），running 删除→409 E_STATE_CONFLICT。
+        稳定集：新增动作须走版本升级，前端不得拼接。
     StateData:
       type: object
+      required: [allowedActions]
       properties:
         currentState: { type: string }
         applied: { type: boolean }
-        allowedActions: { type: array, items: { type: string } }
+        allowedActions:
+          type: array
+          description: 当前目标态下允许的动作集合（稳定 enum）；缺失时前端方可回退按 state 分支渲染（兼容路径）。
+          items: { $ref: "#/components/schemas/AllowedAction" }
     ConnectivityResult:
       type: object
       required: [valid, errors]
@@ -672,9 +686,14 @@ components:
         formLayout: { type: object }
     TaskStatusData:
       type: object
+      required: [allowedActions]
       properties:
         state: { type: string, enum: [new, running, paused, stopped, finished, failed] }
         stage: { type: string }
+        allowedActions:
+          type: array
+          description: 与 PUT /tasks/{name}/state 同源的可用动作集合（详情页动作按钮唯一来源），不从 state 自推。
+          items: { $ref: "#/components/schemas/AllowedAction" }
         progress: { type: number, minimum: 0, maximum: 1 }
         lag: { type: integer }
         lastError: { type: [string, "null"] }

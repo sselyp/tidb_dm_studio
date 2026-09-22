@@ -313,6 +313,42 @@ def check_task_config_isomorphic(doc):
     return problems
 
 
+ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
+
+
+def check_allowed_actions(doc):
+    """Actions are server-authoritative: stable AllowedAction enum on both state + status payloads.
+
+    Guards against `allowedActions` drifting back to a free `string[]`, which would let the
+    frontend re-derive actions from `state` (two state machines → drift at failed/stopped/paused).
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    action = schemas.get("AllowedAction")
+    if not action:
+        return fail("AllowedAction schema missing (server-authoritative action enum)")
+    if action.get("enum") != ALLOWED_ACTIONS:
+        problems += fail(
+            f"AllowedAction.enum must be exactly {ALLOWED_ACTIONS}, got {action.get('enum')}"
+        )
+    for name in ("StateData", "TaskStatusData"):
+        sch = schemas.get(name)
+        if not sch:
+            problems += fail(f"{name} missing")
+            continue
+        prop = (sch.get("properties") or {}).get("allowedActions")
+        if not prop:
+            problems += fail(f"{name}.allowedActions missing (server returns the action set)")
+            continue
+        if prop.get("items", {}).get("$ref", "") != "#/components/schemas/AllowedAction":
+            problems += fail(
+                f"{name}.allowedActions.items must be $ref AllowedAction (stable enum, not free string)"
+            )
+        if "allowedActions" not in (sch.get("required") or []):
+            problems += fail(f"{name}.allowedActions must be required")
+    return problems
+
+
 # Required operations / per-operation statuses live in the versioned manifest
 # scripts/ci/contract_manifest.json (consumed by check_manifest), so adding a new
 # legitimate endpoint never gets false-killed by a completeness check.
@@ -441,7 +477,7 @@ def check_version_description(doc):
     desc = doc["info"].get("description") or ""
     m = re.search(r"v(\d+\.\d+\.\d+)", desc)
     if not m:
-        return fail("info.description must state a version token like v0.9.1")
+        return fail(f"info.description must state a version token matching info.version (v{version})")
     if m.group(1) != version:
         return fail(f"info.description version v{m.group(1)} != info.version {version}")
     return 0
@@ -568,6 +604,7 @@ def main():
         check_config_storage,
         check_state_enum_consistent,
         check_task_config_isomorphic,
+        check_allowed_actions,
         check_manifest,
         check_write_mutex_codes,
         check_ifmatch_binding,
