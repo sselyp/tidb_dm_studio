@@ -90,6 +90,33 @@ def check_required_field_codes(doc):
     return problems
 
 
+def check_dm_compat(doc):
+    """Calibration against the pinned DM control plane (v7.1.6) must be declared."""
+    problems = 0
+    c = doc.get("x-dm-compat") or {}
+    if str(c.get("dmVersion")) != "7.1.6":
+        problems += fail("x-dm-compat.dmVersion must be 7.1.6")
+    cp = c.get("controlPlane") or {}
+    if cp.get("basePath") != "/api/v1":
+        problems += fail("x-dm-compat.controlPlane.basePath must be /api/v1 (DM v7.1)")
+    if not cp.get("errorEnvelope"):
+        problems += fail(
+            "x-dm-compat.controlPlane.errorEnvelope must document DM native {error_msg,error_code}"
+        )
+    mapping = (c.get("taskStageMapping") or {}).get("dmEnum") or []
+    for st in ("Stopped", "Running", "Finished"):
+        if st not in mapping:
+            problems += fail(f"x-dm-compat.taskStageMapping.dmEnum missing {st}")
+    precheck = c.get("precheck") or {}
+    if precheck.get("restEndpoint") is not None:
+        problems += fail(
+            "x-dm-compat.precheck.restEndpoint must be null (no DM REST precheck in v7.1.6)"
+        )
+    if not precheck.get("mechanism"):
+        problems += fail("x-dm-compat.precheck.mechanism must document the dmctl-aligned mechanism")
+    return problems
+
+
 def check_etag_exposed(doc):
     problems = 0
     for resp_name in ("DataSourceItem", "TaskItem"):
@@ -528,6 +555,7 @@ def main():
         check_no_top_level_errors,
         check_field_codes_registered,
         check_required_field_codes,
+        check_dm_compat,
         check_etag_exposed,
         check_http_codes_used,
         check_static_routes,
