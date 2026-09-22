@@ -178,9 +178,15 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
 
-## 7. 待校准（依赖 DM 版本）
+## 7. 待校准（基线 DM v7.1.6 / TiDB v7.1.9）
 
-- `online-ddl` 及其 shadow rules 的字段集合与默认。
-- `validators` 是否可用、字段形态。
-- 版本相关的 precheck 项与 `PRECHECK_*` 触发条件。
-- `Task.sources` 多源在当前版本是否允许 `length>1`（运行时校验，契约不变形）。
+> 测试集群 `dmtest`：dm-master `10.168.2.241:8261`、dm-worker `10.168.2.241:8262`，`dmctl` 可用（`ssh dm-test`）。
+> 下列项以 **DM v7.1.6 实测**为准逐项消项，校准完成后删本节。
+- **命名映射（最高优先）**：API 侧 `camelCase` ↔ DM `task.yaml` `kebab-case` 字段映射表（如 `chunkFilesize↔chunk-filesize`、`poolSize↔pool-size`、`workerCount↔worker-count`、`queueSize↔queue-size`），作为 `GET /task-schema` 与 DM 序列化的唯一映射。
+- `online-ddl` / `online-ddl-scheme` / shadow-table-rules 的准确键名、字段集合与默认。
+- `validators`（下游校验）是否可用、模式取值与字段形态。
+- `collation-compatible` 取值域。
+- `exprFilter` 的准确键名（`expression-filter` / `expr-filter`）与形态。
+- `mydumpers/loaders/syncers` 各字段准确键名与默认。
+- 版本相关 precheck 项与 `PRECHECK_*` 触发条件（对齐 `check-task` 实际输出）。
+- 多源 `length>1` 在当前版本是否允许（运行时校验，契约不变形）。
