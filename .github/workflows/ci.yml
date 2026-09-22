@@ -64,4 +64,5 @@ jobs:
           node-version: "20"
       - run: npm install
       - run: npm run lint
+      - run: npm run verify:renderer
       - run: npm run build
