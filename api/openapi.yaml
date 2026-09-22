@@ -647,9 +647,11 @@ components:
       description: >-
         服务端权威的可用动作稳定枚举（D15）：前端据此渲染动作按钮，不得从 state 自推
         （与预检码、状态推导同一「权威在服务端」原则）。
-        start=下发或重跑（new；stopped/finished 可重跑；failed 由服务端判定可重跑时给出，前端不特判 failed）；
+        start=下发/重跑（new；stopped 可重跑；failed 由服务端判定可重跑时给出，前端不特判 failed）；
+        finished 为正常完成，不提供 start（仅日志/导出）。
         pause=running→pause-task；resume=paused→resume-task；stop=running|paused→stop-task；
-        delete=仅非运行态（new/stopped/finished/failed），running 删除→409 E_STATE_CONFLICT。
+        delete=仅非运行态（new/stopped/finished/failed），running 删除→409 E_STATE_CONFLICT；
+        delete 仅为动作标签，实际删除仍走 DELETE /tasks/{name}。
         稳定集：新增动作须走版本升级，前端不得拼接。
     StateData:
       type: object
