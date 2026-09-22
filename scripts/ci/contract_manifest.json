@@ -1,6 +1,18 @@
 {
   "version": "0.9.4",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
+  "actionTargetState": {
+    "start": "running",
+    "resume": "running",
+    "pause": "paused",
+    "stop": "stopped",
+    "delete": null
+  },
+  "schemaShapes": {
+    "routeRules": "array<string>",
+    "filters": "array<string>",
+    "blockAllowList": "array<BlockAllowList>"
+  },
   "requiredFieldCodes": [
     "E_FIELD_REQUIRED",
     "E_PARAM_RANGE",

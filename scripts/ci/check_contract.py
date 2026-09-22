@@ -403,7 +403,25 @@ def check_source_instance_shapes(doc):
     block = schemas.get("BlockAllowList") or {}
     if sorted(block.get("required") or []) != ["schemaPattern", "tablePattern"]:
         problems += fail("BlockAllowList.required must be [schemaPattern, tablePattern]")
+    observed = {
+        "routeRules": _array_shape(props.get("routeRules")),
+        "filters": _array_shape(props.get("filters")),
+        "blockAllowList": _array_shape(bal),
+    }
+    pinned = _load_manifest().get("schemaShapes")
+    if not isinstance(pinned, dict) or not pinned:
+        problems += fail("manifest.schemaShapes must pin SourceInstance composite shapes")
+    elif pinned != observed:
+        problems += fail(f"SourceInstance shapes {observed} != manifest.schemaShapes {pinned}")
     return problems
+
+
+def _array_shape(p):
+    p = p or {}
+    items = p.get("items") or {}
+    ref = items.get("$ref", "")
+    items_desc = ref.rsplit("/", 1)[-1] if ref else items.get("type", "?")
+    return f"{p.get('type', '?')}<{items_desc}>"
 
 
 ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
@@ -487,6 +505,13 @@ def check_state_taxonomy(doc):
         target = ACTION_TARGET_STATE[a]
         if target is not None and target not in PLATFORM_STATES:
             problems += fail(f"AllowedAction '{a}' targets '{target}' outside platformState")
+    pinned_map = _load_manifest().get("actionTargetState")
+    if not isinstance(pinned_map, dict) or not pinned_map:
+        problems += fail("manifest.actionTargetState must pin the action->target-state map")
+    elif pinned_map != ACTION_TARGET_STATE:
+        problems += fail(
+            f"ACTION_TARGET_STATE {ACTION_TARGET_STATE} != manifest.actionTargetState {pinned_map}"
+        )
     return problems
 
 
