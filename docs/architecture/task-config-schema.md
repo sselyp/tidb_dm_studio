@@ -64,6 +64,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `radio` | enum | 少量选项 |
 | `multi-select` | array\<enum\> | |
 | `key-value` | object 自由键值 | 如 `session`、`filter-args` |
+| `object-form` | object 固定字段 | 按子 `jsonSchema.properties` 渲染嵌套表单；`writeOnly`/`password` 子字段掩码。如 `targetDatabase` |
 | `array-table` | array\<object\> | 如 `sources[]`、`routes[]`、`block-allow-list` |
 | `code-yaml` | string | YAML 透传（`rawYaml` 分支） |
 | `tag-list` | array\<string\> | 如 `case-sensitive` 表名列表 |
@@ -86,6 +87,17 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 - `SourceInstance` 可含**同名 override 段**；保存时后端把「全局默认 + source override」**物化展开**到每个 source，落库即展开态。
 - 读接口恒返回**已展开的有效值**，前端表单只渲染有效值、**不做隐式合并**。
 - config hash 对落库展开态计算（去重/幂等/审计 beforeHash 一致）。
+
+### 4.3 下拉候选来源（options 通道，已冻结）
+
+三类来源，按优先级各司其职：
+
+1. **静态枚举** → `jsonSchema` 的 `enum` + `formLayout.ui[ptr].options`（二者一致）。如 `taskMode`、`timezone`。
+2. **表单内派生**（前端自算，零后端改动）→ 源级 `multi-select` 的候选来自**当前表单全局段**：
+   - `/sources/*/routeRules` ← `/routes[*].name`
+   - `/sources/*/filters` ← `/filters[*].name`
+   随表单实时更新；后端不下发。
+3. **服务端数据** → 后端在 `formLayout.ui[ptr].options` **按请求注入**：`/sources/*/sourceRef` ← 「数据源管理」中已配置并预检通过的连接（`{label: 名称, value: 数据源 id}`）。这是唯一由后端附带候选的通道。
 
 ## 5. 字段目录（按向导步骤）
 
@@ -117,7 +129,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 ### Step 3 同步对象（全局）
 | Pointer | widget | 取值/默认 | 说明 |
 |---|---|---|---|
-| `/routes` | array-table | `{schemaPattern,tablePattern,targetSchema,targetTable}` | 映射/重命名 |
+| `/routes` | array-table | `{name,schemaPattern,tablePattern,targetSchema,targetTable}` | 映射/重命名；`name` 全局唯一，供源级 `routeRules` 引用 |
 | `/blockAllowList` | array-table | `{schemaPattern,tablePattern}` | 限定范围 |
 | `/filters` | array-table | `{name,expression}` | |
 | `/expressionFilter` | array-table | 同 §Step2 | |
@@ -125,7 +137,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 ### Step 4 高级参数（默认 `advanced:true`）
 | Pointer | widget | 默认 | 说明 |
 |---|---|---|---|
-| `/targetDatabase` | key-value | `{host,port,user,password,session}` | 下游 TiDB；口令 `password` 零回显 |
+| `/targetDatabase` | object-form | `{host,port,user,password,session}` | 下游 TiDB；口令 `password` 零回显 |
 | `/onlineDdl` | switch | true | DM 2.0 默认开启；版本相关待校准 |
 | `/onlineDdlShadowTableRules` | array-table | | |
 | `/shadowTableRules` | array-table | | |
@@ -138,6 +150,9 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `/collationCompatible` | select | | 版本相关待校准 |
 
 > 其余 `task.yaml` 字段以 `additionalProperties:true` 保 round-trip：未上表单的键经 `code-yaml`（YAML 双视图）可见/可改，**不丢**。
+>
+> **YAML-only 占位（本期不上表单，明确冻结）**：`/validators`、`/onlineDdlShadowTableRules`、`/shadowTableRules`、`/exprFilter`、`/collationCompatible`。原因：字段形态依赖 DM 版本（见 §7），本期仅由 `additionalProperties:true` 承载、经 YAML 双视图编辑，**不进 `jsonSchema.properties`、不进 `formLayout`**。DM 版本校准后（§7 消项）再上表单。
+> **`object-form`**：`/targetDatabase` 由 `key-value` 升级为 `object-form`（结构化子表单，`password` 掩码、`session` 仍为嵌套 `key-value`）；`/sources/*/metaSnapshot` 可选用 `object-form`（非阻塞）。
 
 ## 6. 校验与错误映射
 
