@@ -9,6 +9,7 @@ const STATE_META: Record<
   running: { color: "green", label: "Running" },
   paused: { color: "orange", label: "Paused" },
   stopped: { color: "default", label: "Stopped" },
+  finished: { color: "blue", label: "Finished" },
 };
 
 export default function StateTag({ state }: { state?: TaskState }) {

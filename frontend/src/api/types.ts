@@ -112,7 +112,7 @@ export interface Task {
   sources: SourceInstance[];
 }
 
-export type TaskState = "new" | "running" | "paused" | "stopped";
+export type TaskState = "new" | "running" | "paused" | "stopped" | "finished";
 
 export interface TaskSummary {
   name: string;
