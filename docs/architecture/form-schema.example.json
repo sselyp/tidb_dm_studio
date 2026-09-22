@@ -6,9 +6,8 @@
     "title": "TaskConfig",
     "type": "object",
     "additionalProperties": true,
-    "required": ["name", "taskMode", "sources"],
+    "required": ["taskMode", "sources"],
     "properties": {
-      "name": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]+$" },
       "taskMode": { "type": "string", "enum": ["all", "full", "incremental"], "default": "all" },
       "caseSensitive": { "type": "boolean", "default": false },
       "metaSchema": { "type": "string" },
@@ -34,9 +33,9 @@
       "blockAllowList": { "type": "array", "items": { "$ref": "#/$defs/BlockAllowList" } },
       "filters": { "$ref": "#/$defs/FilterList" },
       "expressionFilter": { "type": "array", "items": { "$ref": "#/$defs/ExpressionFilter" } },
-      "mydumpers": { "$ref": "#/$defs/SourceOverride" },
-      "loaders": { "$ref": "#/$defs/SourceOverride" },
-      "syncers": { "$ref": "#/$defs/SourceOverride" },
+      "mydumpers": { "type": "array", "items": { "$ref": "#/$defs/MydumperConfig" } },
+      "loaders": { "type": "array", "items": { "$ref": "#/$defs/LoaderConfig" } },
+      "syncers": { "type": "array", "items": { "$ref": "#/$defs/SyncerConfig" } },
       "onlineDdl": { "type": "boolean", "default": true },
       "relayDir": { "type": "string" }
     },
@@ -51,10 +50,13 @@
           "binlogName": { "type": "string" },
           "binlogPos": { "type": "integer", "minimum": 0 },
           "binlogGtid": { "type": "string" },
-          "routeRules": { "type": "array", "items": { "type": "string" } },
+          "routeRules": { "type": "array", "items": { "type": "string" }, "description": "引用 /routes[*].name" },
           "blockAllowList": { "type": "array", "items": { "$ref": "#/$defs/BlockAllowList" } },
-          "filters": { "$ref": "#/$defs/FilterList" },
-          "expressionFilter": { "type": "array", "items": { "$ref": "#/$defs/ExpressionFilter" } }
+          "filters": { "type": "array", "items": { "type": "string" }, "description": "引用 /filters[*].name" },
+          "expressionFilter": { "type": "array", "items": { "$ref": "#/$defs/ExpressionFilter" } },
+          "mydumpers": { "type": "array", "items": { "$ref": "#/$defs/MydumperConfig" } },
+          "loaders": { "type": "array", "items": { "$ref": "#/$defs/LoaderConfig" } },
+          "syncers": { "type": "array", "items": { "$ref": "#/$defs/SyncerConfig" } }
         }
       },
       "BinlogPosition": {
@@ -69,8 +71,9 @@
       "RouteRule": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["schemaPattern", "tablePattern"],
+        "required": ["name", "schemaPattern", "tablePattern"],
         "properties": {
+          "name": { "type": "string", "description": "规则名，全局唯一；供 /sources/*/routeRules 引用" },
           "schemaPattern": { "type": "string" },
           "tablePattern": { "type": "string" },
           "targetSchema": { "type": "string" },
@@ -108,12 +111,32 @@
           "expression": { "type": "string" }
         }
       },
-      "SourceOverride": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": { "global": { "type": "boolean" } }
+      "MydumperConfig": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "global": { "type": "boolean" },
+          "threads": { "type": "integer", "minimum": 1 },
+          "chunkFilesize": { "type": "string" }
+        }
+      },
+      "LoaderConfig": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "global": { "type": "boolean" },
+          "poolSize": { "type": "integer", "minimum": 1 },
+          "dir": { "type": "string" }
+        }
+      },
+      "SyncerConfig": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "global": { "type": "boolean" },
+          "workerCount": { "type": "integer", "minimum": 1 },
+          "batch": { "type": "integer", "minimum": 1 },
+          "queueSize": { "type": "integer", "minimum": 1 }
         }
       }
     }
@@ -179,11 +202,14 @@
       "/sources/*/blockAllowList": { "widget": "array-table", "advanced": true },
       "/sources/*/filters": { "widget": "multi-select", "advanced": true },
       "/sources/*/expressionFilter": { "widget": "array-table", "advanced": true },
-      "/routes": { "widget": "array-table", "itemTitle": "schemaPattern" },
+      "/sources/*/mydumpers": { "widget": "array-table", "advanced": true },
+      "/sources/*/loaders": { "widget": "array-table", "advanced": true },
+      "/sources/*/syncers": { "widget": "array-table", "advanced": true },
+      "/routes": { "widget": "array-table", "itemTitle": "name" },
       "/blockAllowList": { "widget": "array-table", "itemTitle": "schemaPattern" },
       "/filters": { "widget": "array-table", "itemTitle": "name" },
       "/expressionFilter": { "widget": "array-table", "itemTitle": "schemaPattern" },
-      "/targetDatabase": { "widget": "key-value", "help": "下游 TiDB 连接；password 加密存储、永不回显" },
+      "/targetDatabase": { "widget": "object-form", "help": "下游 TiDB 连接；password 零回显" },
       "/mydumpers": { "widget": "array-table" },
       "/loaders": { "widget": "array-table" },
       "/syncers": { "widget": "array-table" },

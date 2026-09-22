@@ -55,7 +55,7 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 | 42901 | `E_RATE_LIMITED` | 429 |
 
 - 除 `POST /api/login`、健康检查外，`/api/**` 未认证一律 401。
-- 首登未改密期间，除 `/login` `/logout` `/password` 白名单外一律 40302。
+- 首登未改密期间，除 `/login` `/logout` `/password` **`/me`** 白名单外一律 40302。`GET /me` 必须在该状态下仍返回 **200**（携带 `mustChangePassword:true`），否则前端守卫无法进入强制改密分支。
 
 ## 5. 认证与会话
 

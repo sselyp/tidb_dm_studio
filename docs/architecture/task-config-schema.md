@@ -13,6 +13,8 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 `version` 跟随 `api/openapi.yaml` 的 `info.version`（当前 `0.9.0`），前端据此判断是否需重取。
 写侧提交体（已冻结）：`{ name, config: TaskConfig }`，其中 `config.sources[]` 复用读侧 `SourceInstance`。
 
+> **`name` 归属（已冻结）**：`name` **只存在于写侧顶层 `TaskWrite.name`，不属于 `TaskConfig`**。因此 `jsonSchema`（= `TaskConfig`）**不含 `name`**（既不在 `properties` 也不在 `required`）；`formLayout` 里的 `/name` 是**特殊只写指针**，渲染器遇 `/name` 绑定顶层 `TaskWrite.name`、不向 `config` 取值。`TaskWrite` 顶层 required `name`、`config` 内 required `[taskMode, sources]`。
+
 ## 2. 响应结构
 
 > **shape 定稿（D11）**：`jsonSchema` 是**纯标准 JSON Schema**（draft 2020-12），**属性内不嵌 `x-ui-*`**；所有 UI 提示放 `formLayout`。二者以 JSON Pointer 关联。
@@ -64,6 +66,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `radio` | enum | 少量选项 |
 | `multi-select` | array\<enum\> | |
 | `key-value` | object 自由键值 | 如 `session`、`filter-args` |
+| `object-form` | object 固定字段 | 按子 `jsonSchema.properties` 渲染嵌套表单；`writeOnly`/`password` 子字段掩码。如 `targetDatabase` |
 | `array-table` | array\<object\> | 如 `sources[]`、`routes[]`、`block-allow-list` |
 | `code-yaml` | string | YAML 透传（`rawYaml` 分支） |
 | `tag-list` | array\<string\> | 如 `case-sensitive` 表名列表 |
@@ -87,6 +90,17 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 - 读接口恒返回**已展开的有效值**，前端表单只渲染有效值、**不做隐式合并**。
 - config hash 对落库展开态计算（去重/幂等/审计 beforeHash 一致）。
 
+### 4.3 下拉候选来源（options 通道，已冻结）
+
+三类来源，按优先级各司其职：
+
+1. **静态枚举** → `jsonSchema` 的 `enum` + `formLayout.ui[ptr].options`（二者一致）。如 `taskMode`、`timezone`。
+2. **表单内派生**（前端自算，零后端改动）→ 源级 `multi-select` 的候选来自**当前表单全局段**：
+   - `/sources/*/routeRules` ← `/routes[*].name`
+   - `/sources/*/filters` ← `/filters[*].name`
+   随表单实时更新；后端不下发。
+3. **服务端数据** → 后端在 `formLayout.ui[ptr].options` **按请求注入**：`/sources/*/sourceRef` ← 「数据源管理」中已配置并预检通过的连接（`{label: 名称, value: 数据源 id}`）。这是唯一由后端附带候选的通道。
+
 ## 5. 字段目录（按向导步骤）
 
 > 路径相对 `config`（即 `TaskConfig`）。`S` = 支持 per-source override。★ = 常用，默认展示；其余 `advanced:true` 折叠。
@@ -94,7 +108,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 ### Step 1 基础信息
 | Pointer | widget | 取值/默认 | 说明 |
 |---|---|---|---|
-| `/name` | input | string, 必填 | 任务名，全局唯一 |
+| `/name` | input | string, 必填 | 任务名，全局唯一；**特殊指针，绑定写侧顶层 `TaskWrite.name`，不在 `config` 内** |
 | `/taskMode` | radio | `all`(默认)/`full`/`incremental` | 任务模式 |
 | `/caseSensitive` | switch | bool, 默认 false | 大小写敏感 |
 | `/metaSchema` | input | string | 库表信息所在库，默认同下游 |
@@ -117,7 +131,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 ### Step 3 同步对象（全局）
 | Pointer | widget | 取值/默认 | 说明 |
 |---|---|---|---|
-| `/routes` | array-table | `{schemaPattern,tablePattern,targetSchema,targetTable}` | 映射/重命名 |
+| `/routes` | array-table | `{name,schemaPattern,tablePattern,targetSchema,targetTable}` | 映射/重命名；`name` 全局唯一，供源级 `routeRules` 引用 |
 | `/blockAllowList` | array-table | `{schemaPattern,tablePattern}` | 限定范围 |
 | `/filters` | array-table | `{name,expression}` | |
 | `/expressionFilter` | array-table | 同 §Step2 | |
@@ -125,7 +139,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 ### Step 4 高级参数（默认 `advanced:true`）
 | Pointer | widget | 默认 | 说明 |
 |---|---|---|---|
-| `/targetDatabase` | key-value | `{host,port,user,password,session}` | 下游 TiDB；口令 `password` 零回显 |
+| `/targetDatabase` | object-form | `{host,port,user,password,session}` | 下游 TiDB；口令 `password` 零回显 |
 | `/onlineDdl` | switch | true | DM 2.0 默认开启；版本相关待校准 |
 | `/onlineDdlShadowTableRules` | array-table | | |
 | `/shadowTableRules` | array-table | | |
@@ -138,6 +152,9 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `/collationCompatible` | select | | 版本相关待校准 |
 
 > 其余 `task.yaml` 字段以 `additionalProperties:true` 保 round-trip：未上表单的键经 `code-yaml`（YAML 双视图）可见/可改，**不丢**。
+>
+> **YAML-only 占位（本期不上表单，明确冻结）**：`/validators`、`/onlineDdlShadowTableRules`、`/shadowTableRules`、`/exprFilter`、`/collationCompatible`。原因：字段形态依赖 DM 版本（见 §7），本期仅由 `additionalProperties:true` 承载、经 YAML 双视图编辑，**不进 `jsonSchema.properties`、不进 `formLayout`**。DM 版本校准后（§7 消项）再上表单。
+> **`object-form`**：`/targetDatabase` 由 `key-value` 升级为 `object-form`（结构化子表单，`password` 掩码、`session` 仍为嵌套 `key-value`）；`/sources/*/metaSnapshot` 可选用 `object-form`（非阻塞）。
 
 ## 6. 校验与错误映射
 
@@ -154,15 +171,22 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `enum` | `ENUM` | `E_PARAM_ENUM` |
 | `pattern` | `REGEX` | `E_PARAM_REGEX` |
 | 条件依赖（`visibleWhen` 对应的服务端规则） | `DEPENDENCY` | `E_PARAM_DEPENDENCY` |
-| 引用对象不存在（如 `sourceRef`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
+| 数组内 unique 键重复（如 `/routes[*].name`、`/filters[*].name`） | `UNIQUE` | `E_FIELD_DUPLICATE` |
+| 引用对象不存在（`/sources[*].sourceRef`、`/sources/*/filters[j]`、`/sources/*/routeRules[j]`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
 
 - 信封码恒为 `42201 E_VALIDATION_FAILED`（HTTP 422）；字段细节只在 `data.errors[]`。
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
 
-## 7. 待校准（依赖 DM 版本）
+## 7. 待校准（基线 DM v7.1.6 / TiDB v7.1.9）
 
-- `online-ddl` 及其 shadow rules 的字段集合与默认。
-- `validators` 是否可用、字段形态。
-- 版本相关的 precheck 项与 `PRECHECK_*` 触发条件。
-- `Task.sources` 多源在当前版本是否允许 `length>1`（运行时校验，契约不变形）。
+> 测试集群 `dmtest`：dm-master `10.168.2.241:8261`、dm-worker `10.168.2.241:8262`，`dmctl` 可用（`ssh dm-test`）。
+> 下列项以 **DM v7.1.6 实测**为准逐项消项，校准完成后删本节。
+- **命名映射（最高优先）**：API 侧 `camelCase` ↔ DM `task.yaml` `kebab-case` 字段映射表（如 `chunkFilesize↔chunk-filesize`、`poolSize↔pool-size`、`workerCount↔worker-count`、`queueSize↔queue-size`），作为 `GET /task-schema` 与 DM 序列化的唯一映射。
+- `online-ddl` / `online-ddl-scheme` / shadow-table-rules 的准确键名、字段集合与默认。
+- `validators`（下游校验）是否可用、模式取值与字段形态。
+- `collation-compatible` 取值域。
+- `exprFilter` 的准确键名（`expression-filter` / `expr-filter`）与形态。
+- `mydumpers/loaders/syncers` 各字段准确键名与默认。
+- 版本相关 precheck 项与 `PRECHECK_*` 触发条件（对齐 `check-task` 实际输出）。
+- 多源 `length>1` 在当前版本是否允许（运行时校验，契约不变形）。

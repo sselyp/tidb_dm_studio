@@ -1,0 +1,852 @@
+openapi: 3.1.0
+info:
+  title: TiDB DM 可视化平台 API
+  version: 0.9.1
+  description: |
+    后端接口契约 v0.9.1。
+    cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
+    状态码为权威；code=0 仅表示请求已处理；错误统一 data.errors；字段错误码见 x-field-error-codes。
+    诊断端点（/task-validate、/task-precheck 各 level、/datasources/test）body 可解析为对象即恒 200 + data.valid；非 JSON/非对象 → 400。
+    写侧端点请求体非法 → 422 E_VALIDATION_FAILED；502 仅 DM 控制面不可达 E_DM_UNAVAILABLE。
+    带 body 的 state-changing 请求须 Content-Type: application/json；无 body 的 state-changing（如 DELETE、/logout）不强制该头，但仍校验 Origin/CSRF。
+    配置落库为物化展开（见 x-config-storage）；读取恒返回有效 per-source 配置。
+servers:
+  - url: /api
+security:
+  - cookieAuth: []
+paths:
+  /login:
+    post:
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/MeResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /logout:
+    post:
+      operationId: logout
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204": { description: 会话已吊销 }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /password:
+    post:
+      operationId: changePassword
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChangeRequest" }
+      responses:
+        "204": { description: 已改密，全部会话吊销 }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+  /me:
+    get:
+      operationId: getMe
+      description: >-
+        登录态探测。强制改密期（mustChangePassword=true）仍返回 200，**不返回 40302**，
+        以便前端守卫先读到 mustChangePassword 再跳改密页，避免刷新即回 /login 的死循环。
+      responses:
+        "200": { $ref: "#/components/responses/MeResult" }
+        "401": { $ref: "#/components/responses/Error" }
+  /healthz:
+    get:
+      operationId: healthz
+      security: []
+      servers:
+        - url: /
+      description: >-
+        存活探针；根路径 /healthz（operation-level servers 覆盖全局 /api 前缀）。
+        未认证白名单（与 /login 同列），供编排/负载均衡探活。
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+  /datasources:
+    get:
+      operationId: listDataSources
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200": { $ref: "#/components/responses/DataSourceList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createDataSource
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 非幂等创建必带（端点级定义）；缺失 → 400 E_BAD_REQUEST。
+          schema: { type: string }
+      requestBody: { $ref: "#/components/requestBodies/DataSourceWrite" }
+      responses:
+        "201": { $ref: "#/components/responses/DataSourceItem" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /datasources/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      operationId: getDataSource
+      responses:
+        "200": { $ref: "#/components/responses/DataSourceItem" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateDataSource
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody: { $ref: "#/components/requestBodies/DataSourceWrite" }
+      responses:
+        "200": { $ref: "#/components/responses/DataSourceItem" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/Error" }
+        "428": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteDataSource
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /datasources/test:
+    post:
+      operationId: testDataSource
+      description: >-
+        受控出站诊断；host 白名单/网段校验，解析后 IP 复检，禁重定向，超时与限频。
+        D12-b 显式安全例外：策略/SSRF/白名单「拒绝发起」→ 422 E_TARGET_NOT_ALLOWED，永不 200；
+        「发起后失败」（连不上/鉴权失败）→ 200 + data.valid=false + errors（reachable 权威）；非 JSON/非对象 → 400。
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody: { $ref: "#/components/requestBodies/DataSourceWrite" }
+      responses:
+        "200": { $ref: "#/components/responses/ConnectionTestResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /tasks:
+    get:
+      operationId: listTasks
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200": { $ref: "#/components/responses/TaskList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createTask
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 非幂等创建必带（端点级定义）；缺失 → 400 E_BAD_REQUEST。
+          schema: { type: string }
+      requestBody: { $ref: "#/components/requestBodies/TaskWrite" }
+      responses:
+        "201": { $ref: "#/components/responses/TaskItem" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /task-schema:
+    get:
+      operationId: getTaskSchema
+      parameters:
+        - name: mode
+          in: query
+          schema: { type: string, enum: [all, full, incremental], default: all }
+      responses:
+        "200": { $ref: "#/components/responses/TaskSchema" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /task-validate:
+    post:
+      operationId: validateTask
+      description: >-
+        D12-b 诊断端点：恒定 level=schema、零出站、不产生 502。body 可解析为对象即恒 200，
+        一切配置正确性问题（schema/语义/枚举/依赖）→ data.valid=false + data.errors[]；非 JSON/非对象 → 400。
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody: { $ref: "#/components/requestBodies/TaskWrite" }
+      responses:
+        "200": { $ref: "#/components/responses/ValidationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /task-precheck:
+    post:
+      operationId: precheckTask
+      description: >-
+        D12-b 诊断端点：level=schema 等价 validate；level=connectivity 经 dm-master。
+        body 可解析为对象即恒 200：仅上游 source 不可达/权限不足 → data.valid=false（reachable 权威）；
+        dm-master 控制面自身不可达 → 502 E_DM_UNAVAILABLE；非 JSON/非对象 → 400。
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: level
+          in: query
+          schema: { type: string, enum: [schema, connectivity], default: schema }
+      requestBody: { $ref: "#/components/requestBodies/TaskWrite" }
+      responses:
+        "200": { $ref: "#/components/responses/ValidationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /tasks/{name}:
+    parameters:
+      - $ref: "#/components/parameters/NamePath"
+    get:
+      operationId: getTask
+      responses:
+        "200": { $ref: "#/components/responses/TaskItem" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateTask
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody: { $ref: "#/components/requestBodies/TaskUpdateWrite" }
+      responses:
+        "200": { $ref: "#/components/responses/TaskItem" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/PreconditionFailed" }
+        "422": { $ref: "#/components/responses/Error" }
+        "428": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteTask
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204": { description: Deleted }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /tasks/{name}/state:
+    parameters:
+      - $ref: "#/components/parameters/NamePath"
+    put:
+      operationId: putTaskState
+      description: 同步目标状态语义；目标态已达返回 applied=false；无 202/轮询。
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StateRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/StateResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /tasks/{name}/status:
+    get:
+      operationId: getTaskStatus
+      parameters:
+        - $ref: "#/components/parameters/NamePath"
+      responses:
+        "200": { $ref: "#/components/responses/TaskStatus" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /tasks/{name}/logs:
+    get:
+      operationId: getTaskLogs
+      parameters:
+        - $ref: "#/components/parameters/NamePath"
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
+      responses:
+        "200": { $ref: "#/components/responses/LogPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /tasks/{name}/yaml:
+    get:
+      operationId: exportTaskYaml
+      description: 导出 YAML；不含任何上游凭据。
+      parameters:
+        - $ref: "#/components/parameters/NamePath"
+      responses:
+        "200":
+          description: YAML
+          content:
+            text/yaml:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: dm_session
+      description: >-
+        HttpOnly + SameSite=Lax 会话 cookie（HTTPS 时 Secure）。state-changing 请求
+        另需 X-CSRF-Token 双提交：请求头须等于 dm_csrf cookie（非 HttpOnly，Path=/、SameSite=Lax、HTTPS 时 Secure）
+        且与服务端会话存储 token 一致；登录/登出轮换 token（防会话固定）。
+  parameters:
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: >-
+        双提交 CSRF：须等于 dm_csrf cookie 且与服务端会话存储 token 一致（服务端握手，非仅回显比对）；
+        缺失/不符 → 403 E_CSRF_FAILED。POST /login 无会话，豁免 CSRF，但仍校验 Origin 与 Content-Type。
+      schema: { type: string }
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    NamePath:
+      name: name
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-zA-Z0-9_-]{1,64}$' }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: 必带；服务端对缺失请求返回 428 E_PRECONDITION_REQUIRED（非 400）。
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        幂等写（PUT）可选，带则参与去重（异体/在途→409），缺失不报错。
+        POST 创建端点使用端点内联的 required:true 定义，不受此可选组件影响。
+      schema: { type: string }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  requestBodies:
+    DataSourceWrite:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/DataSourceWrite" }
+    TaskWrite:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TaskWrite" }
+    TaskUpdateWrite:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TaskUpdateWrite" }
+  responses:
+    Error:
+      description: 统一错误包（HTTP 状态码为权威；字段级错误在 data.errors）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    PreconditionFailed:
+      description: 陈旧 IF-MATCH；纯错误包 + 当前 ETag 响应头，无资源 body
+      headers:
+        ETag:
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    TooManyRequests:
+      description: >-
+        限频或账号锁定；必带 Retry-After（秒）。
+        响应文案不得区分「账号不存在/口令错/已锁定」，统一措辞防账号枚举。
+      headers:
+        Retry-After:
+          description: 建议重试等待秒数
+          schema: { type: integer, minimum: 0 }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    MeResult:
+      description: 当前登录态
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/MeData" }
+    DataSourceList:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      items: { type: array, items: { $ref: "#/components/schemas/DataSource" } }
+                      total: { type: integer }
+                      page: { type: integer }
+                      pageSize: { type: integer }
+    DataSourceItem:
+      description: OK
+      headers:
+        ETag:
+          description: 当前资源 ETag
+          schema: { type: string }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/DataSource" }
+    ConnectionTestResult:
+      description: 连通性/权限预检结果（诊断；200 表示检查已执行）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/ConnectivityResult" }
+    TaskList:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      items: { type: array, items: { $ref: "#/components/schemas/TaskSummary" } }
+                      total: { type: integer }
+                      page: { type: integer }
+                      pageSize: { type: integer }
+    TaskItem:
+      description: OK
+      headers:
+        ETag:
+          description: 当前资源 ETag
+          schema: { type: string }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/Task" }
+    TaskSchema:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/SchemaData" }
+    ValidationResult:
+      description: 校验/预检结果（200 表示检查已执行；用 data.valid 判定通过与否）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/ValidationData" }
+    StateResult:
+      description: 动作结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/StateData" }
+    TaskStatus:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/TaskStatusData" }
+    LogPage:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - properties:
+                  data: { $ref: "#/components/schemas/LogPageData" }
+  schemas:
+    Envelope:
+      type: object
+      required: [code, data, message]
+      properties:
+        code: { type: integer }
+        data: { type: [object, "null"] }
+        message: { type: string }
+      additionalProperties: false
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username: { type: string }
+        password: { type: string, writeOnly: true }
+    PasswordChangeRequest:
+      type: object
+      required: [oldPassword, newPassword]
+      additionalProperties: false
+      properties:
+        oldPassword: { type: string, writeOnly: true }
+        newPassword: { type: string, writeOnly: true }
+    MeData:
+      type: object
+      required: [username, mustChangePassword]
+      properties:
+        username: { type: string }
+        mustChangePassword: { type: boolean }
+        roles:
+          type: array
+          items: { type: string }
+    ErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - properties:
+            data:
+              type: [object, "null"]
+              properties:
+                errors:
+                  type: array
+                  items: { $ref: "#/components/schemas/FieldError" }
+                riskSummary:
+                  type: object
+                  properties:
+                    error: { type: integer }
+                    warning: { type: integer }
+    FieldError:
+      type: object
+      required: [fieldPath, errorCode, message, severity]
+      properties:
+        fieldPath: { type: string, description: RFC6901 JSON Pointer }
+        ruleCode:
+          type: string
+          enum: [REQUIRED, RANGE, ENUM, REGEX, DEPENDENCY, EXISTENCE, UNIQUE]
+        errorCode:
+          type: string
+          description: >-
+            稳定错误码：E_* 见 x-field-error-codes；PRECHECK_* 见 x-precheck-codes。
+            两个命名空间互不重叠，独立于信封 code。
+          enum:
+            - E_FIELD_REQUIRED
+            - E_PARAM_RANGE
+            - E_PARAM_ENUM
+            - E_PARAM_REGEX
+            - E_PARAM_DEPENDENCY
+            - E_FIELD_EXISTENCE
+            - E_FIELD_DUPLICATE
+            - PRECHECK_TABLE_CONFLICT
+            - PRECHECK_PK_CONFLICT
+            - PRECHECK_ROUTE_OVERLAP
+            - PRECHECK_TASK_NAME_DUP
+            - PRECHECK_CHARSET_TZ_MISMATCH
+            - E_SOURCE_UNREACHABLE
+            - E_TARGET_AUTH_FAILED
+        message: { type: string }
+        severity: { type: string, enum: [error, warning, info] }
+    ValidationData:
+      type: object
+      required: [valid, errors]
+      properties:
+        valid: { type: boolean, description: 校验是否通过；与 HTTP 200 独立 }
+        errors:
+          type: array
+          description: 恒为数组；valid=true 时为 []（区分「无错」与「未回」）。
+          items: { $ref: "#/components/schemas/FieldError" }
+        riskSummary:
+          type: object
+          properties:
+            error: { type: integer }
+            warning: { type: integer }
+    StateRequest:
+      type: object
+      required: [desiredState]
+      properties:
+        desiredState: { type: string, enum: [running, paused, stopped] }
+    StateData:
+      type: object
+      properties:
+        currentState: { type: string }
+        applied: { type: boolean }
+        allowedActions: { type: array, items: { type: string } }
+    ConnectivityResult:
+      type: object
+      required: [valid, errors]
+      description: >-
+        连通/权限诊断结果（HTTP 200 表示检查已执行）。valid = reachable && authenticated（统一判据）；
+        errors 恒为数组，valid=true 时为 []。上游不可达/鉴权失败不映射 502，在此以 valid=false 表达；
+        502 E_DM_UNAVAILABLE 仅用于 DM 控制面自身不可达。
+      properties:
+        valid: { type: boolean }
+        reachable: { type: boolean }
+        authenticated: { type: boolean }
+        latencyMs: { type: integer }
+        serverVersion: { type: string }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/FieldError" }
+    SchemaData:
+      type: object
+      properties:
+        version: { type: string }
+        mode: { type: string }
+        jsonSchema: { type: object }
+        formLayout: { type: object }
+    TaskStatusData:
+      type: object
+      properties:
+        state: { type: string, enum: [new, running, paused, stopped] }
+        stage: { type: string }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        lag: { type: integer }
+        lastError: { type: [string, "null"] }
+        updatedAt: { type: string, format: date-time }
+    LogPageData:
+      type: object
+      properties:
+        items: { type: array, items: { type: string } }
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+    TaskSummary:
+      type: object
+      properties:
+        name: { type: string }
+        state: { type: string, enum: [new, running, paused, stopped] }
+        stage: { type: string }
+        lag: { type: integer }
+        sourceCount: { type: integer }
+    DataSource:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [mysql, tidb] }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        version: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    DataSourceWrite:
+      type: object
+      required: [name, type, host, port, username]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [mysql, tidb] }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        password: { type: string, writeOnly: true }
+        tls: { type: object, additionalProperties: true }
+    SourceInstance:
+      type: object
+      required: [sourceRef]
+      properties:
+        sourceRef: { type: string }
+        routeRules: { type: array, items: { type: object, additionalProperties: true } }
+        blockAllowList: { type: object, additionalProperties: true }
+        filters: { type: array, items: { type: object, additionalProperties: true } }
+        binlogPosition: { type: [object, "null"] }
+        metaSnapshot: { type: [string, "null"] }
+    Task:
+      type: object
+      properties:
+        name: { type: string }
+        rawYaml: { type: string }
+        config: { $ref: "#/components/schemas/TaskConfig" }
+        sources:
+          description: >-
+            config.sources 的只读派生投影（同构、同 SourceInstance）；由服务端物化展开后返回，
+            不是独立写入入口。写入一律走 TaskConfigWrite/TaskConfigUpdate 的 config。
+          type: array
+          readOnly: true
+          minItems: 1
+          items: { $ref: "#/components/schemas/SourceInstance" }
+    TaskConfig:
+      description: >-
+        任务配置结构化模型（写入与读取同构）。多源放 config.sources；未知字段原样保留
+        以支持 task.yaml round-trip。落库为物化展开（见 x-config-storage）。
+        **任务名 `name` 在写侧顶层（`TaskConfigWrite.name`），不在 `TaskConfig`（config）内**；
+        故 `GET /task-schema` 的 `jsonSchema.required` 不得包含 `/name`（唯一真源为顶层 name）。
+      type: object
+      required: [sources]
+      additionalProperties: true
+      properties:
+        taskMode: { type: string, enum: [all, full, incremental] }
+        sources:
+          description: >-
+            多源列表（minItems=1）。校验失败恒 422 E_VALIDATION_FAILED，细节只在 data.errors[]：
+            字段缺失 → { fieldPath: "/config/sources", errorCode: "E_FIELD_REQUIRED" }；
+            空数组 [] → { fieldPath: "/config/sources", errorCode: "E_PARAM_RANGE" }。
+            不用 42204 E_PARAM_REQUIRED_ONE（那指"多字段中至少给一个"）；ruleCode 非冻结契约，勿断言。
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SourceInstance" }
+    TaskWrite:
+      description: >-
+        写入二选一（config 或 rawYaml）。服务端须显式区分：**同给** → 422 `E_PARAM_MUTUALLY_EXCLUSIVE`(42203)；
+        **都不给** → 422 `E_PARAM_REQUIRED_ONE`(42204)；其余写侧 schema 违规 → 422 `E_VALIDATION_FAILED`(42201)。
+        JSON Schema 的 oneOf 分不出「都给/都缺」，故不依赖 oneOf 自动判定。
+      oneOf:
+        - $ref: "#/components/schemas/TaskConfigWrite"
+        - $ref: "#/components/schemas/TaskYamlWrite"
+    TaskConfigWrite:
+      type: object
+      required: [name, config]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[a-zA-Z0-9_-]{1,64}$' }
+        config: { $ref: "#/components/schemas/TaskConfig" }
+    TaskYamlWrite:
+      type: object
+      required: [name, rawYaml]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[a-zA-Z0-9_-]{1,64}$' }
+        rawYaml: { type: string }
+    TaskUpdateWrite:
+      description: >-
+        PUT 更新；body.name 可选，存在且与 path 不一致 → 422 `E_PARAM_NAME_MISMATCH`(42205)。
+        服务端须显式区分：config+rawYaml **同给** → 422 `E_PARAM_MUTUALLY_EXCLUSIVE`(42203)；
+        **都不给** → 422 `E_PARAM_REQUIRED_ONE`(42204)；其余写侧违规 → 422 `E_VALIDATION_FAILED`(42201)。
+      oneOf:
+        - $ref: "#/components/schemas/TaskConfigUpdate"
+        - $ref: "#/components/schemas/TaskYamlUpdate"
+    TaskConfigUpdate:
+      type: object
+      required: [config]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[a-zA-Z0-9_-]{1,64}$' }
+        config: { $ref: "#/components/schemas/TaskConfig" }
+    TaskYamlUpdate:
+      type: object
+      required: [rawYaml]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[a-zA-Z0-9_-]{1,64}$' }
+        rawYaml: { type: string }
+x-error-codes:
+  - { http: 400, code: 40001, name: E_BAD_REQUEST }
+  - { http: 401, code: 40101, name: E_UNAUTHENTICATED }
+  - { http: 401, code: 40102, name: E_INVALID_CREDENTIALS }
+  - { http: 403, code: 40301, name: E_FORBIDDEN }
+  - { http: 403, code: 40302, name: E_PASSWORD_CHANGE_REQUIRED }
+  - { http: 403, code: 40303, name: E_CSRF_FAILED }
+  - { http: 404, code: 40401, name: E_NOT_FOUND }
+  - { http: 409, code: 40901, name: E_STATE_CONFLICT }
+  - { http: 409, code: 40902, name: E_DS_REFERENCED }
+  - { http: 409, code: 40903, name: E_IDEMPOTENCY_KEY_REUSED }
+  - { http: 409, code: 40904, name: E_IDEMPOTENCY_IN_PROGRESS }
+  - { http: 409, code: 40905, name: E_NAME_EXISTS }
+  - { http: 412, code: 41201, name: E_PRECONDITION_FAILED }
+  - { http: 422, code: 42201, name: E_VALIDATION_FAILED }
+  - { http: 422, code: 42202, name: E_TARGET_NOT_ALLOWED }
+  - { http: 422, code: 42203, name: E_PARAM_MUTUALLY_EXCLUSIVE }
+  - { http: 422, code: 42204, name: E_PARAM_REQUIRED_ONE }
+  - { http: 422, code: 42205, name: E_PARAM_NAME_MISMATCH }
+  - { http: 422, code: 42206, name: E_WEAK_PASSWORD }
+  - { http: 428, code: 42801, name: E_PRECONDITION_REQUIRED }
+  - { http: 429, code: 42901, name: E_RATE_LIMITED }
+  - { http: 429, code: 42902, name: E_ACCOUNT_LOCKED }
+  - { http: 502, code: 50201, name: E_DM_UNAVAILABLE }
+x-field-error-codes:
+  - E_FIELD_REQUIRED
+  - E_PARAM_RANGE
+  - E_PARAM_ENUM
+  - E_PARAM_REGEX
+  - E_PARAM_DEPENDENCY
+  - E_FIELD_EXISTENCE
+  - E_FIELD_DUPLICATE
+x-precheck-codes:
+  - { code: PRECHECK_TABLE_CONFLICT, rule: 多个源映射到同一目标库表 }
+  - { code: PRECHECK_PK_CONFLICT, rule: 同一目标表被多源写入且主键/唯一键冲突 }
+  - { code: PRECHECK_ROUTE_OVERLAP, rule: 源间 route-rules 目标范围相互覆盖 }
+  - { code: PRECHECK_TASK_NAME_DUP, rule: 目标表名映射后同名 }
+  - { code: PRECHECK_CHARSET_TZ_MISMATCH, rule: 上游字符集/时区不一致 }
+  - { code: E_SOURCE_UNREACHABLE, name: E_SOURCE_UNREACHABLE, rule: 上游 source 不可达（诊断域：200 + data.valid=false；不得复用退役 50202 编号） }
+  - { code: E_TARGET_AUTH_FAILED, name: E_TARGET_AUTH_FAILED, rule: 目标鉴权失败（诊断域：200 + data.valid=false；不得复用退役 50203 编号） }
+x-config-storage:
+  mode: materialized
+  description: >-
+    保存即物化展开：写入时把全局默认与 source 级 override 合并为每个 source 的
+    有效配置后落库；读取接口恒返回合并后的有效 per-source 配置，前端不做隐式合并。
+    config hash（下发去重/幂等/审计 beforeHash）对落库的展开内容计算，语义等价的两套写法 hash 一致。
