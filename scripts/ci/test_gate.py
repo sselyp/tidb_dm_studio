@@ -178,6 +178,14 @@ MUTATIONS += [
     ("StateRequest.desiredState becomes writable 'finished' (not a downlink target)", lambda d: d["components"]["schemas"]["StateRequest"]["properties"]["desiredState"]["enum"].append("finished"), True),
 ]
 
+# SourceInstance must stay the frozen per-source shape (rule-name refs, not inline objects).
+MUTATIONS += [
+    ("SourceInstance.routeRules back to object[]", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"]["routeRules"].__setitem__("items", {"type": "object"}), True),
+    ("SourceInstance.filters back to object[]", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"]["filters"].__setitem__("items", {"type": "object"}), True),
+    ("SourceInstance.blockAllowList back to free object", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("blockAllowList", {"type": "object"}), True),
+    ("BlockAllowList loses tablePattern requirement", lambda d: d["components"]["schemas"]["BlockAllowList"]["required"].remove("tablePattern"), True),
+]
+
 # D16 redline: read models must not echo credentials; request credentials stay writeOnly.
 MUTATIONS += [
     ("Task response exposes password (D16 regression)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("password", {"type": "string"}), True),

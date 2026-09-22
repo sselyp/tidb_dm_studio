@@ -378,6 +378,34 @@ def check_task_config_isomorphic(doc):
     return problems
 
 
+def check_source_instance_shapes(doc):
+    """SourceInstance must mirror the frozen per-source design (rule-name refs, not inline objects).
+
+    Guards drift: routeRules / filters are string[] references to /routes[*].name and
+    /filters[*].name, and blockAllowList is BlockAllowList[] — never free-form object[] / object.
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    src = schemas.get("SourceInstance")
+    if not src:
+        return fail("SourceInstance schema missing")
+    props = src.get("properties") or {}
+    if props.get("sourceRef", {}).get("type") != "string":
+        problems += fail("SourceInstance.sourceRef must be a string")
+    for f in ("routeRules", "filters"):
+        p = props.get(f) or {}
+        if p.get("type") != "array" or (p.get("items") or {}).get("type") != "string":
+            problems += fail(f"SourceInstance.{f} must be array<string> (rule-name reference)")
+    bal = props.get("blockAllowList") or {}
+    ref = (bal.get("items") or {}).get("$ref", "")
+    if bal.get("type") != "array" or not ref.endswith("/BlockAllowList"):
+        problems += fail("SourceInstance.blockAllowList must be array<$ref BlockAllowList>")
+    block = schemas.get("BlockAllowList") or {}
+    if sorted(block.get("required") or []) != ["schemaPattern", "tablePattern"]:
+        problems += fail("BlockAllowList.required must be [schemaPattern, tablePattern]")
+    return problems
+
+
 ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
 
 
@@ -786,6 +814,7 @@ CHECKS = [
     check_state_taxonomy,
     check_dm_compat,
     check_task_config_isomorphic,
+    check_source_instance_shapes,
     check_allowed_actions,
     check_no_credential_echo,
     check_manifest,

@@ -1,5 +1,5 @@
 {
-  "version": "0.9.3",
+  "version": "0.9.4",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
   "requiredFieldCodes": [
     "E_FIELD_REQUIRED",
@@ -314,6 +314,7 @@
     "check_state_taxonomy",
     "check_dm_compat",
     "check_task_config_isomorphic",
+    "check_source_instance_shapes",
     "check_allowed_actions",
     "check_no_credential_echo",
     "check_manifest",
@@ -330,7 +331,7 @@
     "check_healthz_public"
   ],
   "mutations": {
-    "count": 63,
+    "count": 67,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -391,6 +392,10 @@
       "StateRequest.desiredState gains stale 'pending' (outside platformState)",
       "StateRequest.desiredState drops 'paused' (downlink-settable subset shrunk)",
       "StateRequest.desiredState becomes writable 'finished' (not a downlink target)",
+      "SourceInstance.routeRules back to object[]",
+      "SourceInstance.filters back to object[]",
+      "SourceInstance.blockAllowList back to free object",
+      "BlockAllowList loses tablePattern requirement",
       "Task response exposes password (D16 regression)",
       "DataSource response exposes target_config.password (D16)",
       "x-credential-handling redline removed",

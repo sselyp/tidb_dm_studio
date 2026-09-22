@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: TiDB DM 可视化平台 API
-  version: 0.9.3
+  version: 0.9.4
   description: |
-    后端接口契约 v0.9.3（对齐 DM v7.1.6，见 x-dm-compat）。
+    后端接口契约 v0.9.4（对齐 DM v7.1.6，见 x-dm-compat）。
     cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
     状态码为权威；code=0 仅表示请求已处理；错误统一 data.errors；字段错误码见 x-field-error-codes。
     诊断端点（/task-validate、/task-precheck 各 level、/datasources/test）body 可解析为对象即恒 200 + data.valid；非 JSON/非对象 → 400。
@@ -753,16 +753,38 @@ components:
         username: { type: string }
         password: { type: string, writeOnly: true }
         tls: { type: object, additionalProperties: true }
+    BlockAllowList:
+      type: object
+      additionalProperties: false
+      required: [schemaPattern, tablePattern]
+      properties:
+        schemaPattern: { type: string }
+        tablePattern: { type: string }
     SourceInstance:
       type: object
+      additionalProperties: true
       required: [sourceRef]
+      description: >-
+        每源覆盖。形状与冻结的 P0 示例 / task-config-schema.md 对齐：routeRules 与 filters 为规则名引用
+        （string[]，分别指向 /routes[*].name、/filters[*].name），blockAllowList 为规则对象数组（BlockAllowList）。
+        metaSnapshot 为 object-form（binlogName/binlogPos/binlogGtid）；未知字段保留以支持 task.yaml round-trip。
       properties:
-        sourceRef: { type: string }
-        routeRules: { type: array, items: { type: object, additionalProperties: true } }
-        blockAllowList: { type: object, additionalProperties: true }
-        filters: { type: array, items: { type: object, additionalProperties: true } }
-        binlogPosition: { type: [object, "null"] }
-        metaSnapshot: { type: [string, "null"] }
+        sourceRef: { type: string, minLength: 1 }
+        routeRules:
+          type: array
+          items: { type: string }
+          description: 引用 /routes[*].name（规则名，不是内联对象）。
+        blockAllowList:
+          type: array
+          items: { $ref: "#/components/schemas/BlockAllowList" }
+        filters:
+          type: array
+          items: { type: string }
+          description: 引用 /filters[*].name（规则名，不是内联对象）。
+        metaSnapshot: { type: [object, "null"], additionalProperties: true }
+        binlogName: { type: [string, "null"] }
+        binlogPos: { type: [integer, "null"] }
+        binlogGtid: { type: [string, "null"] }
     Task:
       type: object
       properties:
