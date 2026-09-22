@@ -95,13 +95,26 @@ export default function TaskWizardPage() {
       ),
   });
 
-  const dynamicOptions = {
-    sourceRef:
-      datasourcesQuery.data?.data.items.map((d) => ({
-        value: d.id,
-        label: `${d.name}（${d.id}）`,
-      })) ?? [],
-  };
+  const dynamicOptions = useMemo(() => {
+    const names = (arr: unknown) =>
+      Array.isArray(arr)
+        ? arr
+            .map((row) => (row as { name?: unknown })?.name)
+            .filter((n): n is string => typeof n === "string" && n.length > 0)
+            .map((n) => ({ value: n, label: n }))
+        : [];
+    return {
+      // §4.3: backend injects sourceRef candidates into ui.options; this is the
+      // fallback until the schema generator emits them.
+      sourceRef:
+        datasourcesQuery.data?.data.items.map((d) => ({
+          value: d.id,
+          label: `${d.name}（${d.id}）`,
+        })) ?? [],
+      routeRules: names(form.routes),
+      filters: names(form.filters),
+    };
+  }, [form.routes, form.filters, datasourcesQuery.data]);
 
   const current = steps[step] ?? steps[0];
   const isYamlStep = current.key === YAML_STEP_KEY;

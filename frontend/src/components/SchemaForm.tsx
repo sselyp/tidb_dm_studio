@@ -1,6 +1,7 @@
 import { Collapse, Form, Typography } from "antd";
 import type { FormLayout, UiField } from "../api/types";
 import ArrayTableField from "./ArrayTableField";
+import ObjectFormField from "./ObjectFormField";
 import {
   evalVisibleWhen,
   getByPointer,
@@ -68,6 +69,18 @@ export default function SchemaForm({
             value={Array.isArray(current) ? current : []}
             disabled={disabled}
             formValue={value}
+            dynamicOptions={dynamicOptions}
+            onChange={(v) => onChange(pointer, v)}
+          />
+        ) : widget === "object-form" ? (
+          <ObjectFormField
+            pointer={pointer}
+            node={node}
+            root={root}
+            ui={layout?.ui}
+            value={(current as Record<string, unknown>) ?? {}}
+            formValue={value}
+            disabled={disabled}
             dynamicOptions={dynamicOptions}
             onChange={(v) => onChange(pointer, v)}
           />

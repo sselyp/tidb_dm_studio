@@ -22,12 +22,16 @@ interface Props {
 function resolveOptions(
   node: JsonSchemaNode,
   ui?: UiField,
+  dynamicOptions?: Array<{ value: string; label: string }>,
 ): Array<{ value: string | number; label: string }> {
   if (ui?.options && ui.options.length > 0) {
     return ui.options.map((o) => ({
       value: o.value as string | number,
       label: o.label,
     }));
+  }
+  if (dynamicOptions && dynamicOptions.length > 0) {
+    return dynamicOptions;
   }
   return (node.enum ?? []).map((v) => ({ value: v, label: String(v) }));
 }
@@ -92,7 +96,7 @@ export default function WidgetControl({
           value={value as string | undefined}
           disabled={disabled}
           placeholder={ui?.placeholder}
-          options={dynamicOptions ?? resolveOptions(node, ui)}
+          options={resolveOptions(node, ui, dynamicOptions)}
           onChange={(v) => onChange(v)}
         />
       );
@@ -113,7 +117,7 @@ export default function WidgetControl({
           value={(value as string[]) ?? []}
           disabled={disabled}
           placeholder={ui?.placeholder}
-          options={resolveOptions(node, ui)}
+          options={resolveOptions(node, ui, dynamicOptions)}
           onChange={(v) => onChange(v)}
         />
       );
@@ -130,6 +134,9 @@ export default function WidgetControl({
       );
     case "key-value":
     case "array-table":
+    case "object-form":
+      // object-form is rendered structurally by SchemaForm; this is a fallback
+      // for nested rows where no dedicated renderer is dispatched.
       return <JsonField value={value} disabled={disabled} onChange={onChange} />;
     default:
       return (

@@ -12,6 +12,9 @@ export interface JsonSchemaNode {
   required?: string[];
   items?: JsonSchemaNode;
   $ref?: string;
+  writeOnly?: boolean;
+  format?: string;
+  additionalProperties?: unknown;
 }
 
 /** Follow `$ref` (e.g. "#/$defs/SourceInstance") within the root schema. */
@@ -128,6 +131,11 @@ export function inferredWidget(
   }
   if (node.type === "array") {
     return "array-table";
+  }
+  if (node.type === "object") {
+    return node.properties && Object.keys(node.properties).length > 0
+      ? "object-form"
+      : "key-value";
   }
   return "input";
 }
