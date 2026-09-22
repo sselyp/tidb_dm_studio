@@ -378,6 +378,52 @@ def check_task_config_isomorphic(doc):
     return problems
 
 
+def check_source_instance_shapes(doc):
+    """SourceInstance must mirror the frozen per-source design (rule-name refs, not inline objects).
+
+    Guards drift: routeRules / filters are string[] references to /routes[*].name and
+    /filters[*].name, and blockAllowList is BlockAllowList[] — never free-form object[] / object.
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    src = schemas.get("SourceInstance")
+    if not src:
+        return fail("SourceInstance schema missing")
+    props = src.get("properties") or {}
+    if props.get("sourceRef", {}).get("type") != "string":
+        problems += fail("SourceInstance.sourceRef must be a string")
+    for f in ("routeRules", "filters"):
+        p = props.get(f) or {}
+        if p.get("type") != "array" or (p.get("items") or {}).get("type") != "string":
+            problems += fail(f"SourceInstance.{f} must be array<string> (rule-name reference)")
+    bal = props.get("blockAllowList") or {}
+    ref = (bal.get("items") or {}).get("$ref", "")
+    if bal.get("type") != "array" or not ref.endswith("/BlockAllowList"):
+        problems += fail("SourceInstance.blockAllowList must be array<$ref BlockAllowList>")
+    block = schemas.get("BlockAllowList") or {}
+    if sorted(block.get("required") or []) != ["schemaPattern", "tablePattern"]:
+        problems += fail("BlockAllowList.required must be [schemaPattern, tablePattern]")
+    observed = {
+        "routeRules": _array_shape(props.get("routeRules")),
+        "filters": _array_shape(props.get("filters")),
+        "blockAllowList": _array_shape(bal),
+    }
+    pinned = _load_manifest().get("schemaShapes")
+    if not isinstance(pinned, dict) or not pinned:
+        problems += fail("manifest.schemaShapes must pin SourceInstance composite shapes")
+    elif pinned != observed:
+        problems += fail(f"SourceInstance shapes {observed} != manifest.schemaShapes {pinned}")
+    return problems
+
+
+def _array_shape(p):
+    p = p or {}
+    items = p.get("items") or {}
+    ref = items.get("$ref", "")
+    items_desc = ref.rsplit("/", 1)[-1] if ref else items.get("type", "?")
+    return f"{p.get('type', '?')}<{items_desc}>"
+
+
 ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
 
 
@@ -459,6 +505,13 @@ def check_state_taxonomy(doc):
         target = ACTION_TARGET_STATE[a]
         if target is not None and target not in PLATFORM_STATES:
             problems += fail(f"AllowedAction '{a}' targets '{target}' outside platformState")
+    pinned_map = _load_manifest().get("actionTargetState")
+    if not isinstance(pinned_map, dict) or not pinned_map:
+        problems += fail("manifest.actionTargetState must pin the action->target-state map")
+    elif pinned_map != ACTION_TARGET_STATE:
+        problems += fail(
+            f"ACTION_TARGET_STATE {ACTION_TARGET_STATE} != manifest.actionTargetState {pinned_map}"
+        )
     return problems
 
 
@@ -487,16 +540,29 @@ CREDENTIAL_FREE_MODELS = (
 )
 
 
-def _credential_hits(node, path):
+def _credential_hits(node, path, schemas, seen=None):
+    """Walk a response model, dereferencing local `$ref`s so a credential hidden behind
+    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught."""
+    if seen is None:
+        seen = set()
     hits = []
     if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            name = ref.rsplit("/", 1)[-1]
+            if name in seen:
+                return hits
+            target = schemas.get(name)
+            if target is not None:
+                hits.extend(_credential_hits(target, f"{path}->{name}", schemas, seen | {name}))
+            return hits
         for key, val in node.items():
             if _is_credential_key(key):
                 hits.append(f"{path}.{key}")
-            hits.extend(_credential_hits(val, f"{path}.{key}"))
+            hits.extend(_credential_hits(val, f"{path}.{key}", schemas, seen))
     elif isinstance(node, list):
         for i, val in enumerate(node):
-            hits.extend(_credential_hits(val, f"{path}[{i}]"))
+            hits.extend(_credential_hits(val, f"{path}[{i}]", schemas, seen))
     return hits
 
 
@@ -522,7 +588,7 @@ def check_no_credential_echo(doc):
         sch = schemas.get(name)
         if not sch:
             continue
-        for hit in _credential_hits(sch, name):
+        for hit in _credential_hits(sch, name, schemas):
             problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
     # request-side credentials must be writeOnly (input-only, never echoed back)
     for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):
@@ -786,6 +852,7 @@ CHECKS = [
     check_state_taxonomy,
     check_dm_compat,
     check_task_config_isomorphic,
+    check_source_instance_shapes,
     check_allowed_actions,
     check_no_credential_echo,
     check_manifest,

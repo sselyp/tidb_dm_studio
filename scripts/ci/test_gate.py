@@ -178,12 +178,28 @@ MUTATIONS += [
     ("StateRequest.desiredState becomes writable 'finished' (not a downlink target)", lambda d: d["components"]["schemas"]["StateRequest"]["properties"]["desiredState"]["enum"].append("finished"), True),
 ]
 
+# SourceInstance must stay the frozen per-source shape (rule-name refs, not inline objects).
+MUTATIONS += [
+    ("SourceInstance.routeRules back to object[]", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"]["routeRules"].__setitem__("items", {"type": "object"}), True),
+    ("SourceInstance.filters back to object[]", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"]["filters"].__setitem__("items", {"type": "object"}), True),
+    ("SourceInstance.blockAllowList back to free object", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("blockAllowList", {"type": "object"}), True),
+    ("BlockAllowList loses tablePattern requirement", lambda d: d["components"]["schemas"]["BlockAllowList"]["required"].remove("tablePattern"), True),
+]
+
 # D16 redline: read models must not echo credentials; request credentials stay writeOnly.
 MUTATIONS += [
     ("Task response exposes password (D16 regression)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("password", {"type": "string"}), True),
     ("DataSource response exposes target_config.password (D16)", lambda d: d["components"]["schemas"]["DataSource"]["properties"].__setitem__("targetConfig", {"type": "object", "properties": {"password": {"type": "string"}}}), True),
     ("x-credential-handling redline removed", lambda d: d.pop("x-credential-handling", None), True),
     ("DataSourceWrite.password loses writeOnly (echoable input)", lambda d: d["components"]["schemas"]["DataSourceWrite"]["properties"]["password"].pop("writeOnly", None), True),
+]
+
+# D16 $ref blind spot (DS-测试 probe): a credential nested behind Task.config ($ref TaskConfig)
+# or Task.sources ($ref SourceInstance) must still be caught -> _credential_hits dereferences $ref.
+MUTATIONS += [
+    ("TaskConfig.password (direct; $ref'd from Task.config)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("TaskConfig.targetDatabase.password (nested; our own path)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("targetDatabase", {"type": "object", "properties": {"password": {"type": "string"}}}), True),
+    ("SourceInstance.password (direct; $ref'd from Task.sources)", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("password", {"type": "string"}), True),
 ]
 
 
