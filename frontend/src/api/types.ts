@@ -87,11 +87,18 @@ export interface ConnectivityResult {
   errors?: FieldError[];
 }
 
+/** Frozen example `#/$defs/BlockAllowList` (task-config-schema.md §4.3 / form-schema.example.json). */
+export interface BlockAllowList {
+  schemaPattern: string;
+  tablePattern: string;
+}
+
 export interface SourceInstance {
   sourceRef: string;
   /** Names referencing `/routes[*].name` on the task config (D11 §4.3). */
   routeRules?: string[];
-  blockAllowList?: Record<string, unknown>;
+  /** Frozen example = `array<BlockAllowList>` (NOT an object; openapi 0.9.3 was wrong, being fixed on API side). */
+  blockAllowList?: BlockAllowList[];
   /** Names referencing `/filters[*].name` on the task config (D11 §4.3). */
   filters?: string[];
   binlogPosition?: Record<string, unknown> | null;
