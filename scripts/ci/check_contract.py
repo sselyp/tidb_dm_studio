@@ -414,6 +414,54 @@ def check_allowed_actions(doc):
     return problems
 
 
+ACTION_TARGET_STATE = {
+    "start": "running",
+    "resume": "running",
+    "pause": "paused",
+    "stop": "stopped",
+    "delete": None,
+}
+
+
+def check_state_taxonomy(doc):
+    """Reviewer ④: writable desiredState and the action vocabulary stay inside platformState.
+
+    Prevents a stale/extra value drifting back outside the six-state taxonomy:
+    - `StateRequest.desiredState` must be the downlink-settable subset of platformState
+      (and equal the pinned `downlink` key set, so `new`/`finished`/`failed` are never writable);
+    - every `AllowedAction` must be a known action whose resulting platform state (if any)
+      is within platformState.
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    tsm = ((doc.get("x-dm-compat") or {}).get("taskStageMapping") or {})
+    downlink = set(tsm.get("downlink") or {})
+    req = schemas.get("StateRequest") or {}
+    desired = (req.get("properties") or {}).get("desiredState") or {}
+    dset = set(desired.get("enum") or [])
+    if not dset:
+        problems += fail("StateRequest.desiredState must be a non-empty enum")
+    elif not dset <= set(PLATFORM_STATES):
+        problems += fail(
+            f"StateRequest.desiredState {sorted(dset)} must be within platformState {PLATFORM_STATES}"
+        )
+    if downlink and dset != downlink:
+        problems += fail(
+            f"StateRequest.desiredState {sorted(dset)} must equal downlink-settable {sorted(downlink)}"
+        )
+    action = schemas.get("AllowedAction") or {}
+    for a in action.get("enum") or []:
+        if a not in ACTION_TARGET_STATE:
+            problems += fail(
+                f"AllowedAction '{a}' has no taxonomy binding (known: {sorted(ACTION_TARGET_STATE)})"
+            )
+            continue
+        target = ACTION_TARGET_STATE[a]
+        if target is not None and target not in PLATFORM_STATES:
+            problems += fail(f"AllowedAction '{a}' targets '{target}' outside platformState")
+    return problems
+
+
 SENSITIVE_KEY_TOKENS = ("password", "passwd", "target_config")
 
 
@@ -719,44 +767,75 @@ def check_healthz_public(doc):
     return 0
 
 
+CHECKS = [
+    check_error_code_prefix,
+    check_no_top_level_errors,
+    check_field_codes_registered,
+    check_required_field_codes,
+    check_etag_exposed,
+    check_http_codes_used,
+    check_static_routes,
+    check_oneof_write,
+    check_namepath_responses,
+    check_csrf,
+    check_me_endpoint,
+    check_login_lock,
+    check_precheck_codes,
+    check_config_storage,
+    check_state_enum_consistent,
+    check_state_taxonomy,
+    check_dm_compat,
+    check_task_config_isomorphic,
+    check_allowed_actions,
+    check_no_credential_echo,
+    check_manifest,
+    check_write_mutex_codes,
+    check_ifmatch_binding,
+    check_precondition_etag,
+    check_version_description,
+    check_idempotency_optional,
+    check_diagnostic_endpoints,
+    check_diagnostic_required_fields,
+    check_diagnostic_codes,
+    check_precheck_description,
+    check_502_scope,
+    check_healthz_public,
+]
+
+
+def check_check_functions(doc):
+    """Anti-merge-loss guard: contract_manifest.json pins the exact registered check set.
+
+    The mutation gate only protects bindings that have a mutation, so a whole check
+    function could vanish in a merge with CI still green. Here every pinned name must be
+    a registered check, every registered check must be pinned, and no `check_*` function
+    may exist without being wired into CHECKS (write-but-never-run).
+    """
+    problems = 0
+    manifest = _load_manifest()
+    pinned = manifest.get("checkFunctions")
+    if not isinstance(pinned, list) or not pinned:
+        return fail("manifest.checkFunctions must list every registered check function")
+    if len(set(pinned)) != len(pinned):
+        problems += fail("manifest.checkFunctions has duplicate entries")
+    registered = {fn.__name__ for fn in CHECKS}
+    for name in pinned:
+        if name not in registered:
+            problems += fail(f"manifest.checkFunctions lists unregistered check {name}")
+    for name in sorted(registered - set(pinned)):
+        problems += fail(f"registered check {name} missing from manifest.checkFunctions")
+    defined = {n for n, o in globals().items() if n.startswith("check_") and callable(o)}
+    for name in sorted(defined - registered - {"check_check_functions"}):
+        problems += fail(f"check function {name} is defined but never registered in CHECKS")
+    return problems
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
     with open(path, encoding="utf-8") as fh:
         doc = yaml.safe_load(fh)
-    checks = [
-        check_error_code_prefix,
-        check_no_top_level_errors,
-        check_field_codes_registered,
-        check_required_field_codes,
-        check_etag_exposed,
-        check_http_codes_used,
-        check_static_routes,
-        check_oneof_write,
-        check_namepath_responses,
-        check_csrf,
-        check_me_endpoint,
-        check_login_lock,
-        check_precheck_codes,
-        check_config_storage,
-        check_state_enum_consistent,
-        check_dm_compat,
-        check_task_config_isomorphic,
-        check_allowed_actions,
-        check_no_credential_echo,
-        check_manifest,
-        check_write_mutex_codes,
-        check_ifmatch_binding,
-        check_precondition_etag,
-        check_version_description,
-        check_idempotency_optional,
-        check_diagnostic_endpoints,
-        check_diagnostic_required_fields,
-        check_diagnostic_codes,
-        check_precheck_description,
-        check_502_scope,
-        check_healthz_public,
-    ]
-    problems = sum(fn(doc) for fn in checks)
+    problems = sum(fn(doc) for fn in CHECKS)
+    problems += check_check_functions(doc)
     if problems:
         print(f"{problems} problem(s) found")
         return 1
