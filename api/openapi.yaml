@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: TiDB DM 可视化平台 API
-  version: 0.9.1
+  version: 0.9.2
   description: |
-    后端接口契约 v0.9.1。
+    后端接口契约 v0.9.2（对齐 DM v7.1.6，见 x-dm-compat）。
     cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
     状态码为权威；code=0 仅表示请求已处理；错误统一 data.errors；字段错误码见 x-field-error-codes。
     诊断端点（/task-validate、/task-precheck 各 level、/datasources/test）body 可解析为对象即恒 200 + data.valid；非 JSON/非对象 → 400。
@@ -218,6 +218,7 @@ paths:
       operationId: precheckTask
       description: >-
         D12-b 诊断端点：level=schema 等价 validate；level=connectivity 经 dm-master。
+        DM v7.1.6 无 REST 预检端点，connectivity 由后端复用 DM 检查项（与 dmctl check-task 同源）执行。
         body 可解析为对象即恒 200：仅上游 source 不可达/权限不足 → data.valid=false（reachable 权威）；
         dm-master 控制面自身不可达 → 502 E_DM_UNAVAILABLE；非 JSON/非对象 → 400。
       parameters:
@@ -672,8 +673,22 @@ components:
     TaskStatusData:
       type: object
       properties:
-        state: { type: string, enum: [new, running, paused, stopped] }
-        stage: { type: string }
+        state:
+          type: string
+          enum: [new, running, paused, stopped, finished, failed]
+          description: >-
+            平台状态。DM 原生仅 Stopped/Running/Finished，输入 = native + 持久化 lastOp + lastError，
+            唯一推导见 x-dm-compat.taskStageMapping.derivation：人工意图优先（lastOp==stop|pause 先判，
+            再看 lastError）。paused/stopped 非对称、不合并。
+        stage:
+          type: string
+          description: DM 原生 TaskStage 透传（大写：Stopped/Running/Finished）。
+        nativeState:
+          type: string
+          enum: [Stopped, Running, Finished]
+          description: >-
+            DM 原生 TaskStage 的显式核对字段（与 stage 同值，大写原样透传），
+            供按 native 值断言/排障，避免用平台 state 反推。
         progress: { type: number, minimum: 0, maximum: 1 }
         lag: { type: integer }
         lastError: { type: [string, "null"] }
@@ -689,8 +704,9 @@ components:
       type: object
       properties:
         name: { type: string }
-        state: { type: string, enum: [new, running, paused, stopped] }
-        stage: { type: string }
+        state: { type: string, enum: [new, running, paused, stopped, finished, failed] }
+        stage: { type: string, description: DM 原生 TaskStage 透传（大写）。 }
+        nativeState: { type: string, enum: [Stopped, Running, Finished], description: 与 stage 同值的 DM 原生核对字段。 }
         lag: { type: integer }
         sourceCount: { type: integer }
     DataSource:
@@ -751,6 +767,13 @@ components:
       additionalProperties: true
       properties:
         taskMode: { type: string, enum: [all, full, incremental] }
+        ignoreCheckItems:
+          description: >-
+            需跳过的预检项名（对齐 DM Task.ignore_checking_items）。取值集合见
+            x-dm-compat.precheck.ignoreItemIds；DM 各版本集合不同故不设 enum，
+            原样下发，未识别项由 DM 报 20001 ErrConfigCheckItemNotSupport。
+          type: array
+          items: { type: string }
         sources:
           description: >-
             多源列表（minItems=1）。校验失败恒 422 E_VALIDATION_FAILED，细节只在 data.errors[]：
@@ -850,3 +873,71 @@ x-config-storage:
     保存即物化展开：写入时把全局默认与 source 级 override 合并为每个 source 的
     有效配置后落库；读取接口恒返回合并后的有效 per-source 配置，前端不做隐式合并。
     config hash（下发去重/幂等/审计 beforeHash）对落库的展开内容计算，语义等价的两套写法 hash 一致。
+x-dm-compat:
+  dmVersion: 7.1.6
+  downstreamTiDB: 7.1.9
+  controlPlane:
+    basePath: /api/v1
+    docsEndpoint: /api/v1/docs
+    enableFlag: "dm-master server_configs.master.openapi=true（未开启则 /api/v1/* 全部 404）"
+    errorEnvelope: "{error_msg: string, error_code: int}；平台信封 code 由此适配，非透传"
+  nativeStatusCodes:
+    createSource: 201
+    createTask: 201
+    startTask: 200
+    stopTask: 200
+    updateTask: 200
+    deleteSource: 204
+    deleteTask: 204
+  taskStageMapping:
+    dmEnum: [Stopped, Running, Finished]
+    platformState: [new, running, paused, stopped, finished, failed]
+    downlink:
+      running: start-task
+      paused: pause-task
+      stopped: stop-task
+    uplink:
+      Running: running
+      Finished: finished
+      Stopped: by-last-op-and-error
+    derivation:
+      - { platformState: new,      native: "无该任务", condition: "平台已建、从未下发" }
+      - { platformState: running,  native: Running,   condition: "—" }
+      - { platformState: finished, native: Finished,  condition: "—" }
+      - { platformState: failed,   native: Stopped,   condition: "lastOp ∉ {pause,stop} 且 lastError != null" }
+      - { platformState: paused,   native: Stopped,   condition: "lastOp == pause" }
+      - { platformState: stopped,  native: Stopped,   condition: "lastOp == stop 或 lastOp 缺失 → 默认" }
+    intentPriority: "人工意图优先：lastOp==stop|pause 先判，再看 lastError"
+    lastOpPersistence: "lastOp 必须持久化（DB，非内存）；平台重启或任务由平台外创建 → lastOp 缺失 → 默认 stopped"
+    notes: >-
+      DM 无「暂停/停止」区分的 native stage：pause-task 与 stop-task 在 DM 侧最终均为 Stopped。
+      故 paused/stopped 为**非对称映射、不合并**：下发用两条不同原生操作（pause-task / stop-task）
+      并**持久化 lastOp**；上收在 DM Stopped 时按 last-op + lastError 唯一推导（见 derivation，
+      人工意图优先），无法判定默认 stopped。failed 仅当 lastOp ∉ {pause,stop} 且 lastError != null
+      （排除 stop 后残留 error 的误判）。平台 new = 已建未下发；finished = DM Finished 正常完成。
+      DM TaskStage 大写、平台 state 小写；原生值同时经 TaskStatusData.stage / nativeState 透传供核对。
+      x-dm-compat：paused/stopped 下发同 native Stopped，靠 last-op 消歧。
+  precheck:
+    restEndpoint: null
+    mechanism: >-
+      DM v7.1.6 不暴露 REST 预检端点。/task-precheck?level=connectivity 由后端复用 DM 检查项
+      （与 dmctl check-task 同源）执行；跳过项经 TaskConfig.ignoreCheckItems 映射 DM ignore_checking_items。
+      预检结果仅在 POST/PUT /api/v1/tasks 的 OperateTaskResponse.check_result 隐式返回。
+    resultSemantics: "强制项不过 → error（不启动任务）；非强制项不过 → warning（仍启动）"
+    ignoreItemIds: [dump_privilege, replication_privilege, version, server_id, binlog_enable,
+                     table_schema, schema_of_shard_tables, auto_increment_ID, online_ddl,
+                     empty_region, region_distribution, downstream_version, free_space,
+                     downstream_mutex_features]
+    extraIgnoreIdsFromErrorList: [all, binlog_format, binlog_row_image]
+    errorCodes:
+      configCheckItemNotSupport: 20001
+      taskCheck: [26001, 26002, 26003, 26004, 26005, 26006, 26007]
+    platformToDmItem:
+      PRECHECK_TASK_NAME_DUP: "26001 ErrTaskCheckSameTableName / table_schema"
+      PRECHECK_TABLE_CONFLICT: "26003 ErrTaskCheckGenTableRouter / table_schema"
+      PRECHECK_PK_CONFLICT: auto_increment_ID
+      PRECHECK_ROUTE_OVERLAP: "26003 gen table router（route 目标重叠）"
+      PRECHECK_CHARSET_TZ_MISMATCH: "table_schema（不兼容字符集）"
+  taskConverters: /api/v1/tasks/converters
+  taskTemplates: /api/v1/tasks/templates
+  listFilters: { withStatus: with_status, stage: stage, sourceNameList: source_name_list, enableRelay: enable_relay }

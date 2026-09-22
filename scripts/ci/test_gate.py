@@ -61,6 +61,13 @@ def policy_reject_as_200(d):
     r["200"] = r.pop("422")
 
 
+def consistency_delete_field_code(d, code):
+    """Delete a field code from registry AND enum together (self-consistent bad state)."""
+    d["x-field-error-codes"] = [c for c in d["x-field-error-codes"] if c != code]
+    enum = d["components"]["schemas"]["FieldError"]["properties"]["errorCode"]["enum"]
+    enum[:] = [c for c in enum if c != code]
+
+
 # name, mutate, must_fail
 MUTATIONS = [
     ("drop 428 from PUT /tasks/{name}", lambda d: del_resp(d, "/tasks/{name}", "put", 428), True),
@@ -103,6 +110,24 @@ MUTATIONS = [
     # benign control: must NOT be flagged
     ("benign: reword a response description", lambda d: d["components"]["responses"]["Error"].__setitem__("description", "统一错误包"), False),
 ]
+
+# G2 (main d99a2e4): manifest-pinned required field codes; consistent deletion must FAIL.
+for _code in (
+    "E_FIELD_REQUIRED",
+    "E_PARAM_RANGE",
+    "E_PARAM_ENUM",
+    "E_PARAM_REGEX",
+    "E_PARAM_DEPENDENCY",
+    "E_FIELD_DUPLICATE",
+    "E_FIELD_EXISTENCE",
+):
+    MUTATIONS.append(
+        (
+            f"consistent-delete {_code} (registry+enum)",
+            lambda d, c=_code: consistency_delete_field_code(d, c),
+            True,
+        )
+    )
 
 
 def main():
