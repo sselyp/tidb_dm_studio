@@ -506,7 +506,7 @@ def check_version_description(doc):
     desc = doc["info"].get("description") or ""
     m = re.search(r"v(\d+\.\d+\.\d+)", desc)
     if not m:
-        return fail("info.description must state a version token like v0.9.1")
+        return fail(f"info.description must state a version token like v{version}")
     if m.group(1) != version:
         return fail(f"info.description version v{m.group(1)} != info.version {version}")
     return 0

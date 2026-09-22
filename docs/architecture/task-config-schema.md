@@ -21,14 +21,16 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 
 ```jsonc
 {
-  "version": "0.9.0",
-  "jsonSchema": { "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": { /* TaskConfig */ }, "required": ["sources"] },
+  "version": "0.9.2",
+  "jsonSchema": { "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "properties": { /* TaskConfig */ }, "required": ["taskMode", "sources"] },
   "formLayout": {
     "steps": [ /* Step[] */ ],
     "ui": { "/name": { /* UiField */ } }
   }
 }
 ```
+
+> **`name` 归属（渲染器契约，防回塞）**：`config`（即 `jsonSchema`）**不含 `name`**，`required` 里也**没有** `name`；`TaskWrite = { name, config }`，`name` 只在**顶层**。`/name` 是 `formLayout` 里的**特殊只写指针**，`SchemaForm` 对 `/name` 特判 → 绑定顶层 `TaskWrite.name`。
 
 ### 2.1 `UiField`（`formLayout.ui`，键为 JSON Pointer）
 
