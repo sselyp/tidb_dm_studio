@@ -63,7 +63,7 @@ export function createDataSource(body: DataSourceWrite) {
 export function updateDataSource(
   id: string,
   body: DataSourceWrite,
-  etag: string,
+  etag?: string,
 ) {
   return request<DataSource>(`/datasources/${encodeURIComponent(id)}`, {
     method: "PUT",

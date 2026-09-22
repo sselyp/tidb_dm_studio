@@ -21,12 +21,18 @@ import type { ConnectivityResult, DataSource, DataSourceWrite } from "../api/typ
 
 const TYPE_COLORS: Record<string, string> = { mysql: "blue", tidb: "purple" };
 
+/** 0.9.1 adds `valid`; fall back to reachable && authenticated pre-freeze. */
+function isTestOk(r: ConnectivityResult): boolean {
+  return r.valid ?? Boolean(r.reachable && r.authenticated);
+}
+
 export default function DataSourcesPage() {
   const { message } = AntApp.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<DataSourceWrite>();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingEtag, setEditingEtag] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectivityResult | null>(null);
 
   const listQuery = useQuery({
@@ -40,8 +46,7 @@ export default function DataSourcesPage() {
   const saveMutation = useMutation({
     mutationFn: async (values: DataSourceWrite) => {
       if (editingId) {
-        const { etag } = await api.getDataSource(editingId);
-        return api.updateDataSource(editingId, values, etag ?? "");
+        return api.updateDataSource(editingId, values, editingEtag ?? undefined);
       }
       return api.createDataSource(values);
     },
@@ -49,6 +54,7 @@ export default function DataSourcesPage() {
       message.success("已保存");
       setModalOpen(false);
       setEditingId(null);
+      setEditingEtag(null);
       void invalidate();
     },
     onError: (error) => {
@@ -57,6 +63,11 @@ export default function DataSourcesPage() {
           ? envelopeMessage(error.code, error.message)
           : "保存失败",
       );
+      // 412: do not silently overwrite; refresh so the user sees the latest.
+      if (error instanceof ApiError && error.is("E_PRECONDITION_FAILED")) {
+        setEditingEtag(null);
+        void invalidate();
+      }
     },
   });
 
@@ -77,13 +88,15 @@ export default function DataSourcesPage() {
 
   const openCreate = () => {
     setEditingId(null);
+    setEditingEtag(null);
     setTestResult(null);
     form.resetFields();
     setModalOpen(true);
   };
 
-  const openEdit = (record: DataSource) => {
+  const openEdit = async (record: DataSource) => {
     setEditingId(record.id);
+    setEditingEtag(null);
     setTestResult(null);
     form.setFieldsValue({
       name: record.name,
@@ -93,6 +106,14 @@ export default function DataSourcesPage() {
       username: record.username,
     });
     setModalOpen(true);
+    // Capture the ETag when the dialog opens, so If-Match reflects the version
+    // the user is editing rather than a just-refetched value.
+    try {
+      const { etag } = await api.getDataSource(record.id);
+      setEditingEtag(etag ?? null);
+    } catch {
+      setEditingEtag(null);
+    }
   };
 
   const runTest = async () => {
@@ -234,8 +255,16 @@ export default function DataSourcesPage() {
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
             <Button onClick={runTest}>测试连接</Button>
             {testResult && (
-              <Tag color={testResult.reachable ? "green" : "red"}>
-                {testResult.reachable ? "可达" : "不可达"}
+              <Tag
+                color={isTestOk(testResult) ? "green" : "red"}
+              >
+                {testResult.valid !== undefined
+                  ? testResult.valid
+                    ? "连接可用"
+                    : "连接不可用"
+                  : testResult.reachable
+                    ? "可达"
+                    : "不可达"}
                 {testResult.authenticated ? " / 鉴权通过" : ""}
                 {typeof testResult.latencyMs === "number"
                   ? ` / ${testResult.latencyMs}ms`

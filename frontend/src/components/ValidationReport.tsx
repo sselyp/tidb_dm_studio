@@ -3,13 +3,17 @@ import { fieldErrorLabel, groupErrors } from "../api/errorMessages";
 import type { FieldError, ValidationData } from "../api/types";
 
 function ErrorRow({ item }: { item: FieldError }) {
+  const color =
+    item.severity === "warning"
+      ? "orange"
+      : item.severity === "info"
+        ? "blue"
+        : "red";
   return (
     <List.Item>
       <Space direction="vertical" size={2} style={{ width: "100%" }}>
         <Space size={8} wrap>
-          <Tag color={item.severity === "warning" ? "orange" : "red"}>
-            {fieldErrorLabel(item.errorCode)}
-          </Tag>
+          <Tag color={color}>{fieldErrorLabel(item.errorCode)}</Tag>
           <Typography.Text code>{item.fieldPath || "/"}</Typography.Text>
         </Space>
         <Typography.Text type="secondary">{item.message}</Typography.Text>
@@ -28,7 +32,7 @@ export default function ValidationReport({
   if (result.valid && errors.length === 0) {
     return <Alert type="success" showIcon message="校验通过" />;
   }
-  const { error, warning } = groupErrors(errors);
+  const { error, warning, info } = groupErrors(errors);
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       {!result.valid && (
@@ -55,6 +59,15 @@ export default function ValidationReport({
           bordered
           header="警告"
           dataSource={warning}
+          renderItem={(item) => <ErrorRow item={item} />}
+        />
+      )}
+      {info.length > 0 && (
+        <List
+          size="small"
+          bordered
+          header="提示"
+          dataSource={info}
           renderItem={(item) => <ErrorRow item={item} />}
         />
       )}

@@ -41,7 +41,12 @@ export default function SchemaForm({
   const root = jsonSchema as JsonSchemaNode | undefined;
 
   const renderField = (pointer: string) => {
-    const node = resolveSchemaNode(root, pointer);
+    // `/name` is a special write-side pointer bound to the top-level
+    // TaskWrite.name; it is intentionally absent from jsonSchema (D11/monorepo
+    // ruling), so fall back to a synthetic string node for it.
+    const node =
+      resolveSchemaNode(root, pointer) ??
+      (pointer === "/name" ? ({ type: "string" } as JsonSchemaNode) : undefined);
     if (!node) {
       return null;
     }

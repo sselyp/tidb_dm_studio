@@ -70,6 +70,22 @@ export default function TaskWizardPage() {
     return rawYaml !== undefined ? { name, rawYaml } : { name, config };
   };
 
+  // Editing a form field returns to form mode (rawYaml discarded) per ruling:
+  // the submitted body follows the current mode. Any change invalidates the
+  // previous validation result.
+  const handleFormChange = (pointer: string, value: unknown) => {
+    setForm((prev) => setByPointer(prev, pointer, value));
+    if (rawYaml !== undefined) {
+      setRawYaml(undefined);
+    }
+    setValidation(null);
+  };
+
+  const handleRawYamlChange = (value: string) => {
+    setRawYaml(value);
+    setValidation(null);
+  };
+
   const validateMutation = useMutation({
     mutationFn: () => api.validateTask(buildBody()),
     onSuccess: (res) => setValidation(res.data),
@@ -129,9 +145,7 @@ export default function TaskWizardPage() {
           group={group}
           value={form}
           dynamicOptions={dynamicOptions}
-          onChange={(pointer, value) =>
-            setForm((prev) => setByPointer(prev, pointer, value))
-          }
+          onChange={(pointer, value) => handleFormChange(pointer, value)}
         />
       ))}
     </>
@@ -163,7 +177,7 @@ export default function TaskWizardPage() {
           <YamlEditor
             config={config}
             rawYaml={rawYaml}
-            onRawYamlChange={setRawYaml}
+            onRawYamlChange={handleRawYamlChange}
           />
           <Button
             onClick={() => validateMutation.mutate()}

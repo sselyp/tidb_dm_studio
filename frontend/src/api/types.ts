@@ -23,6 +23,7 @@ export type FieldErrorCode =
   | "E_PARAM_REGEX"
   | "E_PARAM_DEPENDENCY"
   | "E_FIELD_EXISTENCE"
+  | "E_FIELD_DUPLICATE"
   | "PRECHECK_TABLE_CONFLICT"
   | "PRECHECK_PK_CONFLICT"
   | "PRECHECK_ROUTE_OVERLAP"
@@ -85,6 +86,8 @@ export interface DataSourceWrite {
 export interface ConnectivityResult {
   reachable?: boolean;
   authenticated?: boolean;
+  /** 0.9.1: = reachable && authenticated (required once frozen). */
+  valid?: boolean;
   latencyMs?: number;
   serverVersion?: string;
   errors?: FieldError[];

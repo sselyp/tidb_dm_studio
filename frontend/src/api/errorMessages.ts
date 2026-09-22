@@ -13,6 +13,7 @@ const FIELD_ERROR_LABELS: Record<FieldErrorCode, string> = {
   E_PARAM_REGEX: "格式不匹配",
   E_PARAM_DEPENDENCY: "依赖字段不满足",
   E_FIELD_EXISTENCE: "引用的对象不存在",
+  E_FIELD_DUPLICATE: "名称重复（需唯一）",
   PRECHECK_TABLE_CONFLICT: "多源映射到同一目标表",
   PRECHECK_PK_CONFLICT: "多源写入同一表且主键/唯一键冲突",
   PRECHECK_ROUTE_OVERLAP: "源间 route-rules 目标范围相互覆盖",
@@ -50,10 +51,16 @@ export function envelopeMessage(code: number, fallback: string): string {
 }
 
 export function groupErrors(errors: FieldError[]) {
-  const bySeverity = { error: [] as FieldError[], warning: [] as FieldError[] };
+  const bySeverity = {
+    error: [] as FieldError[],
+    warning: [] as FieldError[],
+    info: [] as FieldError[],
+  };
   for (const err of errors) {
     if (err.severity === "warning") {
       bySeverity.warning.push(err);
+    } else if (err.severity === "info") {
+      bySeverity.info.push(err);
     } else {
       bySeverity.error.push(err);
     }
