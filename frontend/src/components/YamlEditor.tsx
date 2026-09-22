@@ -1,41 +1,38 @@
 import { Input, Segmented, Space } from "antd";
-import { useMemo, useState } from "react";
-import { stringify as toYaml } from "yaml";
-import type { TaskConfig } from "../api/types";
+import type { YamlMode } from "./yamlMode";
 
 interface Props {
-  config: TaskConfig;
+  mode: YamlMode;
+  generated: string;
   rawYaml?: string;
+  onModeChange: (mode: YamlMode) => void;
   onRawYamlChange: (value: string) => void;
 }
-
-type Mode = "form" | "yaml";
 
 /**
  * Dual view: the form (config) is authoritative in "form" mode; the generated
  * YAML is a live preview. Editing the YAML switches to "yaml" mode and the raw
  * text is what gets submitted (server-side validation is authoritative).
+ *
+ * `mode` is owned by the wizard (not local state) so that the submitted body
+ * always follows the view the user is looking at.
  */
-export default function YamlEditor({ config, rawYaml, onRawYamlChange }: Props) {
-  const [mode, setMode] = useState<Mode>("form");
-
-  const generated = useMemo(() => {
-    try {
-      return toYaml(config, { lineWidth: 0 });
-    } catch {
-      return "";
-    }
-  }, [config]);
-
+export default function YamlEditor({
+  mode,
+  generated,
+  rawYaml,
+  onModeChange,
+  onRawYamlChange,
+}: Props) {
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
-      <Segmented<Mode>
+      <Segmented<YamlMode>
         value={mode}
         options={[
           { label: "表单预览", value: "form" },
           { label: "编辑 YAML", value: "yaml" },
         ]}
-        onChange={setMode}
+        onChange={onModeChange}
       />
       {mode === "form" ? (
         <Input.TextArea

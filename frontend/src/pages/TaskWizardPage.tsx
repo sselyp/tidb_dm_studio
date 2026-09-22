@@ -2,6 +2,7 @@ import { App as AntApp, Alert, Button, Space, Steps, Typography } from "antd";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { stringify as toYaml } from "yaml";
 import * as api from "../api/endpoints";
 import { envelopeMessage } from "../api/errorMessages";
 import { ApiError } from "../api/http";
@@ -16,6 +17,11 @@ import SchemaForm from "../components/SchemaForm";
 import { setByPointer } from "../components/schemaUtils";
 import ValidationReport from "../components/ValidationReport";
 import YamlEditor from "../components/YamlEditor";
+import {
+  buildTaskWrite,
+  rawYamlForMode,
+  type YamlMode,
+} from "../components/yamlMode";
 
 const YAML_STEP_KEY = "__yaml__";
 
@@ -37,6 +43,7 @@ export default function TaskWizardPage() {
   });
   const [step, setStep] = useState(0);
   const [rawYaml, setRawYaml] = useState<string | undefined>(undefined);
+  const [yamlMode, setYamlMode] = useState<YamlMode>("form");
   const [validation, setValidation] = useState<ValidationData | null>(null);
 
   const mode = (form.taskMode as TaskMode) ?? "all";
@@ -65,10 +72,18 @@ export default function TaskWizardPage() {
     return rest as TaskConfig;
   }, [form]);
 
-  const buildBody = (): TaskWrite => {
-    const name = String(form.name ?? "");
-    return rawYaml !== undefined ? { name, rawYaml } : { name, config };
-  };
+  const generatedYaml = useMemo(() => {
+    try {
+      return toYaml(config, { lineWidth: 0 });
+    } catch {
+      return "";
+    }
+  }, [config]);
+
+  // The submitted body follows the view the user is looking at, so `mode` is
+  // owned here rather than inside YamlEditor.
+  const buildBody = (): TaskWrite =>
+    buildTaskWrite(String(form.name ?? ""), yamlMode, rawYaml, config);
 
   // Editing a form field returns to form mode (rawYaml discarded) per ruling:
   // the submitted body follows the current mode. Any change invalidates the
@@ -78,11 +93,19 @@ export default function TaskWizardPage() {
     if (rawYaml !== undefined) {
       setRawYaml(undefined);
     }
+    setYamlMode("form");
+    setValidation(null);
+  };
+
+  const handleYamlModeChange = (next: YamlMode) => {
+    setRawYaml(rawYamlForMode(next, rawYaml, generatedYaml));
+    setYamlMode(next);
     setValidation(null);
   };
 
   const handleRawYamlChange = (value: string) => {
     setRawYaml(value);
+    setYamlMode("yaml");
     setValidation(null);
   };
 
@@ -175,8 +198,10 @@ export default function TaskWizardPage() {
       {isYamlStep ? (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <YamlEditor
-            config={config}
+            mode={yamlMode}
+            generated={generatedYaml}
             rawYaml={rawYaml}
+            onModeChange={handleYamlModeChange}
             onRawYamlChange={handleRawYamlChange}
           />
           <Button
