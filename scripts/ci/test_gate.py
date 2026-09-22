@@ -46,7 +46,7 @@ def require_field_pop(d, schema, field):
 
 
 def drop_precheck_code(d, name):
-    d["x-precheck-codes"] = [c for c in d["x-precheck-codes"] if c.get("name") != name]
+    d["x-precheck-codes"] = [c for c in d["x-precheck-codes"] if c.get("code") != name]
 
 
 def reintroduce_retired_502(d):
@@ -108,15 +108,15 @@ def main():
     spec = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
     base = load(spec)
     os.makedirs(TMP, exist_ok=True)
-    holes, fps = [], []
+    holes, fps, unapplied = [], [], []
     for name, mutate, must_fail in MUTATIONS:
         d = copy.deepcopy(base)
         try:
             mutate(d)
-        except Exception as e:  # binding absent => gate cannot protect it
+        except Exception as e:  # binding absent => gate cannot protect it yet
             if must_fail:
-                holes.append(name)
-                print(f"  HOLE          {name} (cannot apply: {e})")
+                unapplied.append(name)
+                print(f"  UNAPPLIED     {name} (binding absent: {e})")
             else:
                 print(f"  SKIP          {name} (cannot apply: {e})")
             continue
@@ -133,8 +133,11 @@ def main():
             print(f"  FALSE-POSITIVE {name}")
         else:
             print(f"  OK            {name}")
-    print(f"\n{len(MUTATIONS)} mutations: {len(holes)} hole(s), {len(fps)} false positive(s)")
-    return 1 if (holes or fps) else 0
+    print(
+        f"\n{len(MUTATIONS)} mutations: {len(holes)} hole(s) [checker missed], "
+        f"{len(unapplied)} unapplied [binding absent in spec], {len(fps)} false positive(s)"
+    )
+    return 1 if (holes or fps or unapplied) else 0
 
 
 if __name__ == "__main__":
