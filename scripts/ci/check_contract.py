@@ -12,6 +12,19 @@ import yaml
 
 RESERVED_NAME_SEGMENTS = {"schema", "validate", "precheck", "state", "status", "logs", "yaml"}
 NAME_PATTERN = r"^[a-zA-Z0-9_-]{1,64}$"
+# Architect-pinned platform state machine (non-symmetric paused/stopped, see x-dm-compat).
+# seq=32: keep `new` (do NOT introduce `pending`); `failed` kept with a unique derivation.
+PLATFORM_STATES = ["new", "running", "paused", "stopped", "finished", "failed"]
+DM_NATIVE_STAGES = ["Stopped", "Running", "Finished"]
+# (platformState, native, required condition tokens) from architect seq=32 derivation table.
+STATE_DERIVATION = [
+    ("new", None, ["从未下发"]),
+    ("running", "Running", []),
+    ("finished", "Finished", []),
+    ("failed", "Stopped", ["lastOp", "lastError"]),
+    ("paused", "Stopped", ["lastOp", "pause"]),
+    ("stopped", "Stopped", ["lastOp", "stop", "默认"]),
+]
 
 
 def fail(msg):
@@ -76,17 +89,27 @@ def check_field_codes_registered(doc):
 
 
 def check_required_field_codes(doc):
-    """G2 gate (pinned by name): codes frozen by the architecture must be present
-    in x-field-error-codes, so a consistent deletion (registry + enum together)
-    cannot silently drop a code."""
-    required = _load_manifest().get("requiredFieldCodes") or []
-    if not required:
-        return 0
-    registry = set(doc.get("x-field-error-codes", []))
+    """Pinned registry: required field/precheck codes must exist by name.
+
+    Guards against a 'consistent delete' (dropping a code from BOTH
+    x-field-error-codes AND FieldError.errorCode.enum) silently passing the
+    equality-only check_field_codes_registered. Requirement set is versioned in
+    contract_manifest.json so it cannot be softened without editing the manifest.
+    """
     problems = 0
-    for code in required:
-        if code not in registry:
+    manifest = _load_manifest()
+    reg = set(doc.get("x-field-error-codes", []))
+    enum = set(
+        (doc["components"]["schemas"]["FieldError"]["properties"]["errorCode"].get("enum")) or []
+    )
+    required_field = manifest.get("requiredFieldCodes") or []
+    if not required_field:
+        problems += fail("manifest.requiredFieldCodes missing/empty (pinned field-code registry)")
+    for code in required_field:
+        if code not in reg:
             problems += fail(f"required field code {code} missing from x-field-error-codes")
+        if code not in enum:
+            problems += fail(f"required field code {code} missing from FieldError.errorCode.enum")
     return problems
 
 
@@ -249,16 +272,85 @@ def check_config_storage(doc):
 
 
 def check_state_enum_consistent(doc):
-    """TaskSummary.state and TaskStatusData.state must share the same stable enum."""
+    """TaskSummary.state and TaskStatusData.state must share the pinned state enum."""
     problems = 0
     summary = doc["components"]["schemas"]["TaskSummary"]["properties"].get("state", {})
     status = doc["components"]["schemas"]["TaskStatusData"]["properties"].get("state", {})
-    if not summary.get("enum"):
-        problems += fail("TaskSummary.state must declare an enum (list view)")
+    if set(summary.get("enum") or []) != set(PLATFORM_STATES):
+        problems += fail(f"TaskSummary.state enum must be exactly {PLATFORM_STATES}")
     if summary.get("enum") != status.get("enum"):
         problems += fail("TaskSummary.state enum != TaskStatusData.state enum")
+    if "pending" in (summary.get("enum") or []):
+        problems += fail("state enum must not introduce 'pending' (architect seq=32 keeps 'new')")
+    for need in ("new", "finished", "failed"):
+        if need not in (status.get("enum") or []):
+            problems += fail(f"state enum must include '{need}'")
     if "status" in doc["components"]["schemas"]["TaskSummary"]["properties"]:
         problems += fail("TaskSummary must not expose a separate 'status' field")
+    # native passthrough for cross-checking against DM TaskStage
+    for sch in ("TaskStatusData", "TaskSummary"):
+        ns = doc["components"]["schemas"][sch]["properties"].get("nativeState", {})
+        if not ns:
+            problems += fail(f"{sch}.nativeState missing (DM TaskStage passthrough)")
+        elif ns.get("enum") != DM_NATIVE_STAGES:
+            problems += fail(f"{sch}.nativeState enum must be {DM_NATIVE_STAGES}")
+    return problems
+
+
+def check_dm_compat(doc):
+    """Calibration against the pinned DM control plane (v7.1.6) must be declared."""
+    problems = 0
+    c = doc.get("x-dm-compat") or {}
+    if str(c.get("dmVersion")) != "7.1.6":
+        problems += fail("x-dm-compat.dmVersion must be 7.1.6")
+    cp = c.get("controlPlane") or {}
+    if cp.get("basePath") != "/api/v1":
+        problems += fail("x-dm-compat.controlPlane.basePath must be /api/v1 (DM v7.1)")
+    if not cp.get("errorEnvelope"):
+        problems += fail("x-dm-compat.controlPlane.errorEnvelope must document DM native {error_msg,error_code}")
+    mapping = (c.get("taskStageMapping") or {}).get("dmEnum") or []
+    for st in ("Stopped", "Running", "Finished"):
+        if st not in mapping:
+            problems += fail(f"x-dm-compat.taskStageMapping.dmEnum missing {st}")
+    tsm = c.get("taskStageMapping") or {}
+    if set(tsm.get("platformState") or []) != set(PLATFORM_STATES):
+        problems += fail(f"x-dm-compat.taskStageMapping.platformState must be {PLATFORM_STATES}")
+    downlink = tsm.get("downlink") or {}
+    if downlink.get("paused") != "pause-task" or downlink.get("stopped") != "stop-task":
+        problems += fail("x-dm-compat.downlink must map paused→pause-task, stopped→stop-task")
+    if downlink.get("running") != "start-task":
+        problems += fail("x-dm-compat.downlink must map running→start-task")
+    uplink = tsm.get("uplink") or {}
+    for k, v in (("Running", "running"), ("Finished", "finished"), ("Stopped", "by-last-op-and-error")):
+        if uplink.get(k) != v:
+            problems += fail(f"x-dm-compat.uplink.{k} must be '{v}'")
+    # architect seq=32: pinned derivation table (native + lastOp + lastError), human intent first.
+    deriv = {d.get("platformState"): d for d in (tsm.get("derivation") or [])}
+    if set(deriv) != set(PLATFORM_STATES):
+        problems += fail(f"x-dm-compat.derivation states must be exactly {PLATFORM_STATES}")
+    for state, native, tokens in STATE_DERIVATION:
+        row = deriv.get(state)
+        if not row:
+            continue
+        if native and row.get("native") != native:
+            problems += fail(f"x-dm-compat.derivation[{state}].native must be {native}")
+        cond = str(row.get("condition") or "")
+        for tok in tokens:
+            if tok not in cond:
+                problems += fail(f"x-dm-compat.derivation[{state}].condition must mention '{tok}'")
+    if not tsm.get("intentPriority"):
+        problems += fail("x-dm-compat.taskStageMapping.intentPriority must state human-intent priority")
+    persist = str(tsm.get("lastOpPersistence") or "")
+    if "持久化" not in persist or "非内存" not in persist:
+        problems += fail("x-dm-compat.taskStageMapping.lastOpPersistence must require persisted (non-memory) lastOp")
+    notes = tsm.get("notes") or ""
+    if "last-op" not in notes and "最近一次下发意图" not in notes:
+        problems += fail("x-dm-compat.taskStageMapping.notes must document paused/stopped last-op disambiguation")
+    precheck = c.get("precheck") or {}
+    if precheck.get("restEndpoint") is not None:
+        problems += fail("x-dm-compat.precheck.restEndpoint must be null (no DM REST precheck in v7.1.6)")
+    if not precheck.get("mechanism"):
+        problems += fail("x-dm-compat.precheck.mechanism must document the dmctl-aligned mechanism")
     return problems
 
 
@@ -539,6 +631,7 @@ def main():
         check_precheck_codes,
         check_config_storage,
         check_state_enum_consistent,
+        check_dm_compat,
         check_task_config_isomorphic,
         check_manifest,
         check_write_mutex_codes,
