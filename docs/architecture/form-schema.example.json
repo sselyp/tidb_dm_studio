@@ -38,7 +38,7 @@
       "syncers": { "type": "array", "items": { "$ref": "#/$defs/SyncerConfig" } },
       "onlineDdl": { "type": "boolean", "default": true },
       "relayDir": { "type": "string" },
-      "ignoreCheckItems": { "type": "array", "items": { "type": "string" }, "description": "需跳过的预检项；候选见 x-dm-compat.precheck.ignoreItemIds（DM 版本相关，不设 enum）" }
+      "ignoreCheckItems": { "type": "array", "items": { "type": "string" }, "description": "需跳过的预检项；闭集候选见 x-dm-compat.precheck.ignoreItemIds（DM 版本相关，不设 enum；服务端校验取值）" }
     },
     "$defs": {
       "SourceInstance": {
@@ -215,7 +215,7 @@
       "/loaders": { "widget": "array-table" },
       "/syncers": { "widget": "array-table" },
       "/onlineDdl": { "widget": "switch", "help": "DM 2.0 默认开启；具体字段随版本校准" },
-      "/ignoreCheckItems": { "widget": "multi-select", "advanced": true, "help": "跳过预检项；候选由服务端注入（x-dm-compat.precheck.ignoreItemIds），允许自定义" },
+      "/ignoreCheckItems": { "widget": "multi-select", "advanced": true, "help": "跳过预检项；候选由服务端注入（x-dm-compat.precheck.ignoreItemIds），闭集、不支持自由输入" },
       "/relayDir": { "widget": "input", "advanced": true }
     }
   }

@@ -378,6 +378,52 @@ def check_task_config_isomorphic(doc):
     return problems
 
 
+def check_source_instance_shapes(doc):
+    """SourceInstance must mirror the frozen per-source design (rule-name refs, not inline objects).
+
+    Guards drift: routeRules / filters are string[] references to /routes[*].name and
+    /filters[*].name, and blockAllowList is BlockAllowList[] — never free-form object[] / object.
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    src = schemas.get("SourceInstance")
+    if not src:
+        return fail("SourceInstance schema missing")
+    props = src.get("properties") or {}
+    if props.get("sourceRef", {}).get("type") != "string":
+        problems += fail("SourceInstance.sourceRef must be a string")
+    for f in ("routeRules", "filters"):
+        p = props.get(f) or {}
+        if p.get("type") != "array" or (p.get("items") or {}).get("type") != "string":
+            problems += fail(f"SourceInstance.{f} must be array<string> (rule-name reference)")
+    bal = props.get("blockAllowList") or {}
+    ref = (bal.get("items") or {}).get("$ref", "")
+    if bal.get("type") != "array" or not ref.endswith("/BlockAllowList"):
+        problems += fail("SourceInstance.blockAllowList must be array<$ref BlockAllowList>")
+    block = schemas.get("BlockAllowList") or {}
+    if sorted(block.get("required") or []) != ["schemaPattern", "tablePattern"]:
+        problems += fail("BlockAllowList.required must be [schemaPattern, tablePattern]")
+    observed = {
+        "routeRules": _array_shape(props.get("routeRules")),
+        "filters": _array_shape(props.get("filters")),
+        "blockAllowList": _array_shape(bal),
+    }
+    pinned = _load_manifest().get("schemaShapes")
+    if not isinstance(pinned, dict) or not pinned:
+        problems += fail("manifest.schemaShapes must pin SourceInstance composite shapes")
+    elif pinned != observed:
+        problems += fail(f"SourceInstance shapes {observed} != manifest.schemaShapes {pinned}")
+    return problems
+
+
+def _array_shape(p):
+    p = p or {}
+    items = p.get("items") or {}
+    ref = items.get("$ref", "")
+    items_desc = ref.rsplit("/", 1)[-1] if ref else items.get("type", "?")
+    return f"{p.get('type', '?')}<{items_desc}>"
+
+
 ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
 
 
@@ -414,6 +460,61 @@ def check_allowed_actions(doc):
     return problems
 
 
+ACTION_TARGET_STATE = {
+    "start": "running",
+    "resume": "running",
+    "pause": "paused",
+    "stop": "stopped",
+    "delete": None,
+}
+
+
+def check_state_taxonomy(doc):
+    """Reviewer ④: writable desiredState and the action vocabulary stay inside platformState.
+
+    Prevents a stale/extra value drifting back outside the six-state taxonomy:
+    - `StateRequest.desiredState` must be the downlink-settable subset of platformState
+      (and equal the pinned `downlink` key set, so `new`/`finished`/`failed` are never writable);
+    - every `AllowedAction` must be a known action whose resulting platform state (if any)
+      is within platformState.
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    tsm = ((doc.get("x-dm-compat") or {}).get("taskStageMapping") or {})
+    downlink = set(tsm.get("downlink") or {})
+    req = schemas.get("StateRequest") or {}
+    desired = (req.get("properties") or {}).get("desiredState") or {}
+    dset = set(desired.get("enum") or [])
+    if not dset:
+        problems += fail("StateRequest.desiredState must be a non-empty enum")
+    elif not dset <= set(PLATFORM_STATES):
+        problems += fail(
+            f"StateRequest.desiredState {sorted(dset)} must be within platformState {PLATFORM_STATES}"
+        )
+    if downlink and dset != downlink:
+        problems += fail(
+            f"StateRequest.desiredState {sorted(dset)} must equal downlink-settable {sorted(downlink)}"
+        )
+    action = schemas.get("AllowedAction") or {}
+    for a in action.get("enum") or []:
+        if a not in ACTION_TARGET_STATE:
+            problems += fail(
+                f"AllowedAction '{a}' has no taxonomy binding (known: {sorted(ACTION_TARGET_STATE)})"
+            )
+            continue
+        target = ACTION_TARGET_STATE[a]
+        if target is not None and target not in PLATFORM_STATES:
+            problems += fail(f"AllowedAction '{a}' targets '{target}' outside platformState")
+    pinned_map = _load_manifest().get("actionTargetState")
+    if not isinstance(pinned_map, dict) or not pinned_map:
+        problems += fail("manifest.actionTargetState must pin the action->target-state map")
+    elif pinned_map != ACTION_TARGET_STATE:
+        problems += fail(
+            f"ACTION_TARGET_STATE {ACTION_TARGET_STATE} != manifest.actionTargetState {pinned_map}"
+        )
+    return problems
+
+
 SENSITIVE_KEY_TOKENS = ("password", "passwd", "target_config")
 
 
@@ -439,16 +540,29 @@ CREDENTIAL_FREE_MODELS = (
 )
 
 
-def _credential_hits(node, path):
+def _credential_hits(node, path, schemas, seen=None):
+    """Walk a response model, dereferencing local `$ref`s so a credential hidden behind
+    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught."""
+    if seen is None:
+        seen = set()
     hits = []
     if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            name = ref.rsplit("/", 1)[-1]
+            if name in seen:
+                return hits
+            target = schemas.get(name)
+            if target is not None:
+                hits.extend(_credential_hits(target, f"{path}->{name}", schemas, seen | {name}))
+            return hits
         for key, val in node.items():
             if _is_credential_key(key):
                 hits.append(f"{path}.{key}")
-            hits.extend(_credential_hits(val, f"{path}.{key}"))
+            hits.extend(_credential_hits(val, f"{path}.{key}", schemas, seen))
     elif isinstance(node, list):
         for i, val in enumerate(node):
-            hits.extend(_credential_hits(val, f"{path}[{i}]"))
+            hits.extend(_credential_hits(val, f"{path}[{i}]", schemas, seen))
     return hits
 
 
@@ -474,7 +588,7 @@ def check_no_credential_echo(doc):
         sch = schemas.get(name)
         if not sch:
             continue
-        for hit in _credential_hits(sch, name):
+        for hit in _credential_hits(sch, name, schemas):
             problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
     # request-side credentials must be writeOnly (input-only, never echoed back)
     for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):
@@ -719,44 +833,76 @@ def check_healthz_public(doc):
     return 0
 
 
+CHECKS = [
+    check_error_code_prefix,
+    check_no_top_level_errors,
+    check_field_codes_registered,
+    check_required_field_codes,
+    check_etag_exposed,
+    check_http_codes_used,
+    check_static_routes,
+    check_oneof_write,
+    check_namepath_responses,
+    check_csrf,
+    check_me_endpoint,
+    check_login_lock,
+    check_precheck_codes,
+    check_config_storage,
+    check_state_enum_consistent,
+    check_state_taxonomy,
+    check_dm_compat,
+    check_task_config_isomorphic,
+    check_source_instance_shapes,
+    check_allowed_actions,
+    check_no_credential_echo,
+    check_manifest,
+    check_write_mutex_codes,
+    check_ifmatch_binding,
+    check_precondition_etag,
+    check_version_description,
+    check_idempotency_optional,
+    check_diagnostic_endpoints,
+    check_diagnostic_required_fields,
+    check_diagnostic_codes,
+    check_precheck_description,
+    check_502_scope,
+    check_healthz_public,
+]
+
+
+def check_check_functions(doc):
+    """Anti-merge-loss guard: contract_manifest.json pins the exact registered check set.
+
+    The mutation gate only protects bindings that have a mutation, so a whole check
+    function could vanish in a merge with CI still green. Here every pinned name must be
+    a registered check, every registered check must be pinned, and no `check_*` function
+    may exist without being wired into CHECKS (write-but-never-run).
+    """
+    problems = 0
+    manifest = _load_manifest()
+    pinned = manifest.get("checkFunctions")
+    if not isinstance(pinned, list) or not pinned:
+        return fail("manifest.checkFunctions must list every registered check function")
+    if len(set(pinned)) != len(pinned):
+        problems += fail("manifest.checkFunctions has duplicate entries")
+    registered = {fn.__name__ for fn in CHECKS}
+    for name in pinned:
+        if name not in registered:
+            problems += fail(f"manifest.checkFunctions lists unregistered check {name}")
+    for name in sorted(registered - set(pinned)):
+        problems += fail(f"registered check {name} missing from manifest.checkFunctions")
+    defined = {n for n, o in globals().items() if n.startswith("check_") and callable(o)}
+    for name in sorted(defined - registered - {"check_check_functions"}):
+        problems += fail(f"check function {name} is defined but never registered in CHECKS")
+    return problems
+
+
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
     with open(path, encoding="utf-8") as fh:
         doc = yaml.safe_load(fh)
-    checks = [
-        check_error_code_prefix,
-        check_no_top_level_errors,
-        check_field_codes_registered,
-        check_required_field_codes,
-        check_etag_exposed,
-        check_http_codes_used,
-        check_static_routes,
-        check_oneof_write,
-        check_namepath_responses,
-        check_csrf,
-        check_me_endpoint,
-        check_login_lock,
-        check_precheck_codes,
-        check_config_storage,
-        check_state_enum_consistent,
-        check_dm_compat,
-        check_task_config_isomorphic,
-        check_allowed_actions,
-        check_no_credential_echo,
-        check_manifest,
-        check_write_mutex_codes,
-        check_ifmatch_binding,
-        check_precondition_etag,
-        check_version_description,
-        check_idempotency_optional,
-        check_diagnostic_endpoints,
-        check_diagnostic_required_fields,
-        check_diagnostic_codes,
-        check_precheck_description,
-        check_502_scope,
-        check_healthz_public,
-    ]
-    problems = sum(fn(doc) for fn in checks)
+    problems = sum(fn(doc) for fn in CHECKS)
+    problems += check_check_functions(doc)
     if problems:
         print(f"{problems} problem(s) found")
         return 1

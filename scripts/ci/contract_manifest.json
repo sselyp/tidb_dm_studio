@@ -1,6 +1,18 @@
 {
-  "version": "0.9.3",
+  "version": "0.9.4",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
+  "actionTargetState": {
+    "start": "running",
+    "resume": "running",
+    "pause": "paused",
+    "stop": "stopped",
+    "delete": null
+  },
+  "schemaShapes": {
+    "routeRules": "array<string>",
+    "filters": "array<string>",
+    "blockAllowList": "array<BlockAllowList>"
+  },
   "requiredFieldCodes": [
     "E_FIELD_REQUIRED",
     "E_PARAM_RANGE",
@@ -11,33 +23,398 @@
     "E_FIELD_DUPLICATE"
   ],
   "operations": [
-    { "operationId": "login",            "path": "/login",                 "method": "post",   "statuses": [200, 400, 401, 422, 429] },
-    { "operationId": "logout",           "path": "/logout",                "method": "post",   "statuses": [204, 401, 403] },
-    { "operationId": "changePassword",   "path": "/password",              "method": "post",   "statuses": [204, 401, 403, 422, 429] },
-    { "operationId": "getMe",            "path": "/me",                    "method": "get",    "statuses": [200, 401] },
-    { "operationId": "healthz",          "path": "/healthz",               "method": "get",    "statuses": [200] },
-    { "operationId": "listDataSources",  "path": "/datasources",           "method": "get",    "statuses": [200, 401, 403] },
-    { "operationId": "createDataSource", "path": "/datasources",           "method": "post",   "statuses": [201, 400, 401, 403, 409, 422] },
-    { "operationId": "getDataSource",    "path": "/datasources/{id}",      "method": "get",    "statuses": [200, 401, 403, 404] },
-    { "operationId": "updateDataSource", "path": "/datasources/{id}",      "method": "put",    "statuses": [200, 400, 401, 403, 404, 412, 422, 428] },
-    { "operationId": "deleteDataSource", "path": "/datasources/{id}",      "method": "delete", "statuses": [204, 401, 403, 404, 409] },
-    { "operationId": "testDataSource",   "path": "/datasources/test",      "method": "post",   "statuses": [200, 400, 401, 403, 422] },
-    { "operationId": "listTasks",        "path": "/tasks",                 "method": "get",    "statuses": [200, 401, 403] },
-    { "operationId": "createTask",       "path": "/tasks",                 "method": "post",   "statuses": [201, 400, 401, 403, 409, 422] },
-    { "operationId": "getTaskSchema",    "path": "/task-schema",           "method": "get",    "statuses": [200, 400, 401, 403] },
-    { "operationId": "validateTask",     "path": "/task-validate",         "method": "post",   "statuses": [200, 400, 401, 403] },
-    { "operationId": "precheckTask",     "path": "/task-precheck",         "method": "post",   "statuses": [200, 400, 401, 403, 502] },
-    { "operationId": "getTask",          "path": "/tasks/{name}",          "method": "get",    "statuses": [200, 400, 401, 403, 404] },
-    { "operationId": "updateTask",       "path": "/tasks/{name}",          "method": "put",    "statuses": [200, 400, 401, 403, 404, 412, 422, 428] },
-    { "operationId": "deleteTask",       "path": "/tasks/{name}",          "method": "delete", "statuses": [204, 400, 401, 403, 404, 409] },
-    { "operationId": "putTaskState",     "path": "/tasks/{name}/state",    "method": "put",    "statuses": [200, 400, 401, 403, 404, 409, 422, 502] },
-    { "operationId": "getTaskStatus",    "path": "/tasks/{name}/status",   "method": "get",    "statuses": [200, 400, 401, 403, 404] },
-    { "operationId": "getTaskLogs",      "path": "/tasks/{name}/logs",     "method": "get",    "statuses": [200, 400, 401, 403, 404] },
-    { "operationId": "exportTaskYaml",   "path": "/tasks/{name}/yaml",     "method": "get",    "statuses": [200, 400, 401, 403, 404] }
+    {
+      "operationId": "login",
+      "path": "/login",
+      "method": "post",
+      "statuses": [
+        200,
+        400,
+        401,
+        422,
+        429
+      ]
+    },
+    {
+      "operationId": "logout",
+      "path": "/logout",
+      "method": "post",
+      "statuses": [
+        204,
+        401,
+        403
+      ]
+    },
+    {
+      "operationId": "changePassword",
+      "path": "/password",
+      "method": "post",
+      "statuses": [
+        204,
+        401,
+        403,
+        422,
+        429
+      ]
+    },
+    {
+      "operationId": "getMe",
+      "path": "/me",
+      "method": "get",
+      "statuses": [
+        200,
+        401
+      ]
+    },
+    {
+      "operationId": "healthz",
+      "path": "/healthz",
+      "method": "get",
+      "statuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "listDataSources",
+      "path": "/datasources",
+      "method": "get",
+      "statuses": [
+        200,
+        401,
+        403
+      ]
+    },
+    {
+      "operationId": "createDataSource",
+      "path": "/datasources",
+      "method": "post",
+      "statuses": [
+        201,
+        400,
+        401,
+        403,
+        409,
+        422
+      ]
+    },
+    {
+      "operationId": "getDataSource",
+      "path": "/datasources/{id}",
+      "method": "get",
+      "statuses": [
+        200,
+        401,
+        403,
+        404
+      ]
+    },
+    {
+      "operationId": "updateDataSource",
+      "path": "/datasources/{id}",
+      "method": "put",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404,
+        412,
+        422,
+        428
+      ]
+    },
+    {
+      "operationId": "deleteDataSource",
+      "path": "/datasources/{id}",
+      "method": "delete",
+      "statuses": [
+        204,
+        401,
+        403,
+        404,
+        409
+      ]
+    },
+    {
+      "operationId": "testDataSource",
+      "path": "/datasources/test",
+      "method": "post",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        422
+      ]
+    },
+    {
+      "operationId": "listTasks",
+      "path": "/tasks",
+      "method": "get",
+      "statuses": [
+        200,
+        401,
+        403
+      ]
+    },
+    {
+      "operationId": "createTask",
+      "path": "/tasks",
+      "method": "post",
+      "statuses": [
+        201,
+        400,
+        401,
+        403,
+        409,
+        422
+      ]
+    },
+    {
+      "operationId": "getTaskSchema",
+      "path": "/task-schema",
+      "method": "get",
+      "statuses": [
+        200,
+        400,
+        401,
+        403
+      ]
+    },
+    {
+      "operationId": "validateTask",
+      "path": "/task-validate",
+      "method": "post",
+      "statuses": [
+        200,
+        400,
+        401,
+        403
+      ]
+    },
+    {
+      "operationId": "precheckTask",
+      "path": "/task-precheck",
+      "method": "post",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        502
+      ]
+    },
+    {
+      "operationId": "getTask",
+      "path": "/tasks/{name}",
+      "method": "get",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404
+      ]
+    },
+    {
+      "operationId": "updateTask",
+      "path": "/tasks/{name}",
+      "method": "put",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404,
+        412,
+        422,
+        428
+      ]
+    },
+    {
+      "operationId": "deleteTask",
+      "path": "/tasks/{name}",
+      "method": "delete",
+      "statuses": [
+        204,
+        400,
+        401,
+        403,
+        404,
+        409
+      ]
+    },
+    {
+      "operationId": "putTaskState",
+      "path": "/tasks/{name}/state",
+      "method": "put",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404,
+        409,
+        422,
+        502
+      ]
+    },
+    {
+      "operationId": "getTaskStatus",
+      "path": "/tasks/{name}/status",
+      "method": "get",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404
+      ]
+    },
+    {
+      "operationId": "getTaskLogs",
+      "path": "/tasks/{name}/logs",
+      "method": "get",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404
+      ]
+    },
+    {
+      "operationId": "exportTaskYaml",
+      "path": "/tasks/{name}/yaml",
+      "method": "get",
+      "statuses": [
+        200,
+        400,
+        401,
+        403,
+        404
+      ]
+    }
   ],
   "responseHeaders": {
-    "DataSourceItem": ["ETag"],
-    "TaskItem": ["ETag"],
-    "PreconditionFailed": ["ETag"]
+    "DataSourceItem": [
+      "ETag"
+    ],
+    "TaskItem": [
+      "ETag"
+    ],
+    "PreconditionFailed": [
+      "ETag"
+    ]
+  },
+  "checkFunctions": [
+    "check_error_code_prefix",
+    "check_no_top_level_errors",
+    "check_field_codes_registered",
+    "check_required_field_codes",
+    "check_etag_exposed",
+    "check_http_codes_used",
+    "check_static_routes",
+    "check_oneof_write",
+    "check_namepath_responses",
+    "check_csrf",
+    "check_me_endpoint",
+    "check_login_lock",
+    "check_precheck_codes",
+    "check_config_storage",
+    "check_state_enum_consistent",
+    "check_state_taxonomy",
+    "check_dm_compat",
+    "check_task_config_isomorphic",
+    "check_source_instance_shapes",
+    "check_allowed_actions",
+    "check_no_credential_echo",
+    "check_manifest",
+    "check_write_mutex_codes",
+    "check_ifmatch_binding",
+    "check_precondition_etag",
+    "check_version_description",
+    "check_idempotency_optional",
+    "check_diagnostic_endpoints",
+    "check_diagnostic_required_fields",
+    "check_diagnostic_codes",
+    "check_precheck_description",
+    "check_502_scope",
+    "check_healthz_public"
+  ],
+  "mutations": {
+    "count": 70,
+    "names": [
+      "drop 428 from PUT /tasks/{name}",
+      "drop 428 from PUT /datasources/{id}",
+      "drop 412 from PUT /tasks/{name}",
+      "drop 412 from PUT /datasources/{id}",
+      "drop ETag header from PreconditionFailed (412)",
+      "drop ETag header from TaskItem",
+      "drop ETag header from DataSourceItem",
+      "drop 409 from DELETE /datasources/{id} (E_DS_REFERENCED)",
+      "drop 409 from DELETE /tasks/{name} (state conflict)",
+      "drop 502 from PUT /tasks/{name}/state (DM down)",
+      "drop 404 from GET /tasks/{name}",
+      "drop 400 from PUT /tasks/{name}",
+      "drop 403 from POST /logout (CSRF)",
+      "delete whole UpdateTask op",
+      "delete whole DeleteTask op",
+      "TaskConfig.sources.minItems -> 0",
+      "drop TaskWrite.oneOf",
+      "loosen NamePath pattern",
+      "re-introduce literal /tasks/schema",
+      "FieldError.errorCode.enum loses one entry",
+      "info.description version text != info.version",
+      "Idempotency-Key required:true on idempotent PUT",
+      "re-add 422 to /task-validate (diagnostic must stay 200-only)",
+      "re-add 422 to /task-precheck (diagnostic must stay 200-only)",
+      "drop 422 from /datasources/test (policy/SSRF reject must stay 422)",
+      "policy reject (E_TARGET_NOT_ALLOWED) downgraded to 200",
+      "drop required 'valid' from ValidationData",
+      "drop required 'errors' from ValidationData (want [] when valid)",
+      "drop required 'valid' from ConnectivityResult",
+      "drop required 'errors' from ConnectivityResult (want [] when valid)",
+      "retired 50202 re-introduced into x-error-codes",
+      "drop E_SOURCE_UNREACHABLE from x-precheck-codes",
+      "drop E_TARGET_AUTH_FAILED from x-precheck-codes",
+      "x-error-codes code prefix != http",
+      "/task-precheck description reintroduces upstream-502 wording",
+      "platformState re-introduces 'pending' (D14 forbids)",
+      "platformState drops 'failed'",
+      "derivation drops 'failed' row",
+      "derivation 'failed' loses lastOp guard",
+      "intentPriority removed (human-intent priority lost)",
+      "lastOpPersistence removed (lastOp not persisted)",
+      "state enum (both) re-introduces 'pending'",
+      "state enum (both) drops 'failed'",
+      "dmEnum drops 'Finished' (control: check_dm_compat guards)",
+      "benign: reword a response description",
+      "consistent-delete E_FIELD_REQUIRED (registry+enum)",
+      "consistent-delete E_PARAM_RANGE (registry+enum)",
+      "consistent-delete E_PARAM_ENUM (registry+enum)",
+      "consistent-delete E_PARAM_REGEX (registry+enum)",
+      "consistent-delete E_PARAM_DEPENDENCY (registry+enum)",
+      "consistent-delete E_FIELD_DUPLICATE (registry+enum)",
+      "consistent-delete E_FIELD_EXISTENCE (registry+enum)",
+      "StateData.allowedActions back to free string[]",
+      "drop allowedActions from TaskStatusData (status has no action source)",
+      "AllowedAction enum loses 'resume'",
+      "AllowedAction enum gains bogus 'restart'",
+      "StateRequest.desiredState gains stale 'pending' (outside platformState)",
+      "StateRequest.desiredState drops 'paused' (downlink-settable subset shrunk)",
+      "StateRequest.desiredState becomes writable 'finished' (not a downlink target)",
+      "SourceInstance.routeRules back to object[]",
+      "SourceInstance.filters back to object[]",
+      "SourceInstance.blockAllowList back to free object",
+      "BlockAllowList loses tablePattern requirement",
+      "Task response exposes password (D16 regression)",
+      "DataSource response exposes target_config.password (D16)",
+      "x-credential-handling redline removed",
+      "DataSourceWrite.password loses writeOnly (echoable input)",
+      "TaskConfig.password (direct; $ref'd from Task.config)",
+      "TaskConfig.targetDatabase.password (nested; our own path)",
+      "SourceInstance.password (direct; $ref'd from Task.sources)"
+    ]
   }
 }

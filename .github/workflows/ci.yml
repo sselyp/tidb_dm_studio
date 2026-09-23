@@ -30,19 +30,12 @@ jobs:
           else
             echo "scripts/ci/gen_error_codes.py not present yet, skipping"
           fi
-      - name: Gate self-test (mutation regression)
+      - name: Gate self-test (mutation regression + anti-shrink manifest)
         run: |
           if [ -f scripts/ci/check_contract.py ] && [ -f api/openapi.yaml ]; then
             python3 scripts/ci/test_gate.py api/openapi.yaml
           else
             echo "check_contract.py or api/openapi.yaml missing, skipping gate self-test"
-          fi
-      - name: Anti-shrink guard (checker fns + mutation set vs manifest)
-        run: |
-          if [ -f scripts/ci/check_manifest_shrink.py ] && [ -f scripts/ci/contract_manifest.mutations.json ]; then
-            python3 scripts/ci/check_manifest_shrink.py
-          else
-            echo "anti-shrink manifest/guard not present yet, skipping"
           fi
       - name: No hardcoded addresses / credentials
         run: |
