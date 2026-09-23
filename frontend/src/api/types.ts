@@ -1,4 +1,4 @@
-// Types mirroring api/openapi.yaml (v0.9.2). Keep in sync with the contract.
+// Types mirroring api/openapi.yaml (v0.9.4). Keep in sync with the contract.
 
 import { FieldErrorCodes, PrecheckCodes } from "./errorCodes";
 
@@ -93,16 +93,27 @@ export interface BlockAllowList {
   tablePattern: string;
 }
 
+/** Frozen example `#/$defs/BinlogPosition`; also the shape of the per-source metaSnapshot property. */
+export interface BinlogPosition {
+  binlogName?: string;
+  binlogPos?: number;
+  binlogGtid?: string;
+}
+
 export interface SourceInstance {
   sourceRef: string;
+  /** Object-form (BinlogPosition), NOT a string (openapi aligned to the example in v0.9.4). */
+  metaSnapshot?: BinlogPosition | null;
+  /** Flat binlog point; replaces the old `binlogPosition` stray object (v0.9.4). */
+  binlogName?: string | null;
+  binlogPos?: number | null;
+  binlogGtid?: string | null;
   /** Names referencing `/routes[*].name` on the task config (D11 §4.3). */
   routeRules?: string[];
-  /** Frozen example = `array<BlockAllowList>` (NOT an object; openapi 0.9.3 was wrong, being fixed on API side). */
+  /** Frozen example = `array<BlockAllowList>` (NOT an object; openapi 0.9.3 was wrong, fixed in 0.9.4). */
   blockAllowList?: BlockAllowList[];
   /** Names referencing `/filters[*].name` on the task config (D11 §4.3). */
   filters?: string[];
-  binlogPosition?: Record<string, unknown> | null;
-  metaSnapshot?: string | null;
 }
 
 export type TaskMode = "all" | "full" | "incremental";

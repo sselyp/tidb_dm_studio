@@ -71,6 +71,23 @@ describe("schema shape (frozen D11 P0 example)", () => {
     expect(Object.keys(item?.properties ?? {})).toEqual(["schemaPattern", "tablePattern"]);
   });
 
+  it("source binlog point is flat, no stray binlogPosition (v0.9.4)", () => {
+    expect(resolveSchemaNode(root, "/sources/*/binlogPosition")).toBeUndefined();
+    expect(resolveSchemaNode(root, "/sources/*/binlogName")?.type).toBe("string");
+    expect(resolveSchemaNode(root, "/sources/*/binlogPos")?.type).toBe("integer");
+    expect(resolveSchemaNode(root, "/sources/*/binlogGtid")?.type).toBe("string");
+  });
+
+  it("source metaSnapshot is object-form (BinlogPosition), not a string", () => {
+    const resolved = deref(root, resolveSchemaNode(root, "/sources/*/metaSnapshot"));
+    expect(resolved?.type).toBe("object");
+    expect(Object.keys(resolved?.properties ?? {})).toEqual([
+      "binlogName",
+      "binlogPos",
+      "binlogGtid",
+    ]);
+  });
+
   it("mydumpers item properties", () => {
     expect(
       Object.keys(
