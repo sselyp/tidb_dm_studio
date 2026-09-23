@@ -9,6 +9,7 @@ Usage: python scripts/ci/test_gate.py api/openapi.yaml
 Exit non-zero if any must_fail mutation is NOT caught, or a benign edit IS flagged.
 """
 import copy
+import json
 import os
 import shutil
 import subprocess
@@ -18,6 +19,7 @@ import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHECKER = os.path.join(HERE, "check_contract.py")
+MANIFEST = os.path.join(HERE, "contract_manifest.json")
 
 
 def load(path):
@@ -169,6 +171,21 @@ MUTATIONS += [
     ("AllowedAction enum gains bogus 'restart'", lambda d: d["components"]["schemas"]["AllowedAction"]["enum"].append("restart"), True),
 ]
 
+# desiredState / action vocabulary must stay inside the six-state platformState taxonomy (reviewer ④).
+MUTATIONS += [
+    ("StateRequest.desiredState gains stale 'pending' (outside platformState)", lambda d: d["components"]["schemas"]["StateRequest"]["properties"]["desiredState"]["enum"].append("pending"), True),
+    ("StateRequest.desiredState drops 'paused' (downlink-settable subset shrunk)", lambda d: d["components"]["schemas"]["StateRequest"]["properties"]["desiredState"]["enum"].remove("paused"), True),
+    ("StateRequest.desiredState becomes writable 'finished' (not a downlink target)", lambda d: d["components"]["schemas"]["StateRequest"]["properties"]["desiredState"]["enum"].append("finished"), True),
+]
+
+# SourceInstance must stay the frozen per-source shape (rule-name refs, not inline objects).
+MUTATIONS += [
+    ("SourceInstance.routeRules back to object[]", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"]["routeRules"].__setitem__("items", {"type": "object"}), True),
+    ("SourceInstance.filters back to object[]", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"]["filters"].__setitem__("items", {"type": "object"}), True),
+    ("SourceInstance.blockAllowList back to free object", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("blockAllowList", {"type": "object"}), True),
+    ("BlockAllowList loses tablePattern requirement", lambda d: d["components"]["schemas"]["BlockAllowList"]["required"].remove("tablePattern"), True),
+]
+
 # D16 redline: read models must not echo credentials; request credentials stay writeOnly.
 MUTATIONS += [
     ("Task response exposes password (D16 regression)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("password", {"type": "string"}), True),
@@ -177,9 +194,40 @@ MUTATIONS += [
     ("DataSourceWrite.password loses writeOnly (echoable input)", lambda d: d["components"]["schemas"]["DataSourceWrite"]["properties"]["password"].pop("writeOnly", None), True),
 ]
 
+# D16 $ref blind spot (DS-测试 probe): a credential nested behind Task.config ($ref TaskConfig)
+# or Task.sources ($ref SourceInstance) must still be caught -> _credential_hits dereferences $ref.
+MUTATIONS += [
+    ("TaskConfig.password (direct; $ref'd from Task.config)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("TaskConfig.targetDatabase.password (nested; our own path)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("targetDatabase", {"type": "object", "properties": {"password": {"type": "string"}}}), True),
+    ("SourceInstance.password (direct; $ref'd from Task.sources)", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("password", {"type": "string"}), True),
+]
+
+
+def assert_gate_manifest():
+    """The manifest pins the mutation set so it cannot silently shrink.
+
+    Deleting (or renaming) a mutation without updating contract_manifest.json fails here,
+    before the gate runs, instead of quietly reducing coverage.
+    """
+    with open(MANIFEST, encoding="utf-8") as f:
+        pinned = json.load(f).get("mutations") or {}
+    names = [name for name, _, _ in MUTATIONS]
+    if pinned.get("count") != len(MUTATIONS):
+        return f"manifest.mutations.count {pinned.get('count')} != actual {len(MUTATIONS)}"
+    if list(pinned.get("names") or []) != names:
+        return (
+            "manifest.mutations.names != actual MUTATIONS list "
+            "(mutation set changed without updating contract_manifest.json)"
+        )
+    return None
+
 
 def main():
     spec = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
+    err = assert_gate_manifest()
+    if err:
+        print(f"  GATE CONFIG ERROR: {err}")
+        return 2
     base = load(spec)
     tmpdir = tempfile.mkdtemp(prefix="gate_selftest_")
     holes, fps, unapplied = [], [], []
