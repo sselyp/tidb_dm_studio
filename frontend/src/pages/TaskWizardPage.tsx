@@ -33,7 +33,7 @@ const FALLBACK_STEP: FormStep = {
   key: "basic",
   title: "基础",
   groups: [
-    { key: "meta", title: "任务元信息", fields: ["/name", "/taskMode"] },
+    { key: "meta", title: "任务元信息", fields: ["/name"] },
   ],
 };
 
@@ -218,7 +218,7 @@ export default function TaskWizardPage() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message="schema 获取失败，已回退到最小基础字段；可切到 YAML 步骤直接编辑。"
+          message="schema 获取失败：表单仅可编辑任务名（其余字段无 schema 无法渲染）；请在「YAML 与校验」步骤编辑完整配置。"
         />
       )}
 
