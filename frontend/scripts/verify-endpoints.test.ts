@@ -27,6 +27,17 @@ const contractPaths = new Set(
   Object.keys(spec.paths).map((p) => normalize(p.replace(/\{[^}]+\}/g, "{p}"))),
 );
 
+/**
+ * Explicit pin (review seq=87): a contract endpoint that is intentionally not
+ * consumed by the frontend must be listed here, so adding an unconsumed endpoint
+ * (e.g. /metrics) fails loudly and points at this file instead of looking like a
+ * client regression. The file also documents *why* a path is unconsumed.
+ */
+const allowlistUrl = new URL("./unconsumed-paths.json", import.meta.url);
+const unconsumedAllowlist = new Set<string>(
+  (JSON.parse(fs.readFileSync(allowlistUrl, "utf8")) as { paths: string[] }).paths,
+);
+
 describe("frontend API client covers only contract paths", () => {
   it("extracts a non-trivial number of called paths", () => {
     expect(new Set(calledPaths).size).toBeGreaterThanOrEqual(16);
@@ -39,8 +50,15 @@ describe("frontend API client covers only contract paths", () => {
     expect(unknown).toEqual([]);
   });
 
-  it("contract paths the client does not call are limited to /healthz", () => {
+  it("unconsumed contract paths exactly match the pinned allowlist", () => {
     const unused = [...contractPaths].filter((p) => !calledPaths.includes(p));
-    expect(unused).toEqual(["/healthz"]);
+    expect(new Set(unused)).toEqual(unconsumedAllowlist);
+  });
+
+  it("every allowlist entry is a real, currently-unconsumed contract path", () => {
+    for (const p of unconsumedAllowlist) {
+      expect(contractPaths.has(p)).toBe(true);
+      expect(calledPaths).not.toContain(p);
+    }
   });
 });
