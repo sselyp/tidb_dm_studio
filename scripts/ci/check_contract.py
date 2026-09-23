@@ -421,10 +421,21 @@ def check_source_instance_shapes(doc):
         problems += fail("TargetDatabase.additionalProperties must be false (frozen example)")
     if list(tgt.get("required") or []) != ["host", "port", "user"]:
         problems += fail("TargetDatabase.required must be [host, port, user]")
+    if list(tprops.keys()) != ["host", "port", "user", "password", "security", "session"]:
+        problems += fail(
+            "TargetDatabase.properties must be [host,port,user,password,security,session]"
+        )
     if (tprops.get("password") or {}).get("writeOnly") is not True:
         problems += fail("TargetDatabase.password must be writeOnly")
+    if (tprops.get("security") or {}).get("type") != "object":
+        problems += fail("TargetDatabase.security must be an object (TLS)")
     if (tprops.get("session") or {}).get("additionalProperties", {}).get("type") != "string":
         problems += fail("TargetDatabase.session must be map<string,string>")
+
+    # TaskConfig.required must match the frozen example (name lives on TaskConfigWrite; taskMode has a default).
+    cfg = schemas.get("TaskConfig") or {}
+    if list(cfg.get("required") or []) != ["sources"]:
+        problems += fail("TaskConfig.required must be [sources] (example parity; taskMode optional)")
     return problems
 
 
