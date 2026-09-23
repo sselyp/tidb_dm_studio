@@ -125,6 +125,8 @@ export interface TargetDatabase {
   user: string;
   /** writeOnly (D16): may appear in writes, but read models / yaml export / logs must never echo it. */
   password?: string;
+  /** DM TLS settings (optional; rendered via object-form/key-value). */
+  security?: Record<string, unknown>;
   session?: Record<string, string>;
 }
 
