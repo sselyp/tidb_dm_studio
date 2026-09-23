@@ -805,9 +805,10 @@ components:
         `password` 为纯写入通道（writeOnly: true）：请求可出现，任何读取模型（Task.config 读回、
         /tasks/{name}/yaml 导出、日志/审计）一律不得回显（D16 自有路径）。
         形状与冻结 P0 示例 `form-schema.example.json` 两端一致：`required:[host,port,user]`、
-        `additionalProperties:false`、`session` 为 `map<string,string>`；`security`(TLS) 保留为可选。
+        `additionalProperties:true`（保 task.yaml round-trip，同 SourceInstance 先例）、
+        `session` 为 `map<string,string>`；`security`(TLS) 保留为可选。
       type: object
-      additionalProperties: false
+      additionalProperties: true
       required: [host, port, user]
       properties:
         host: { type: string }
@@ -837,7 +838,7 @@ components:
         **任务名 `name` 在写侧顶层（`TaskConfigWrite.name`），不在 `TaskConfig`（config）内**；
         故 `GET /task-schema` 的 `jsonSchema.required` 不得包含 `/name`（唯一真源为顶层 name）。
       type: object
-      required: [sources]
+      required: [taskMode, sources]
       additionalProperties: true
       properties:
         taskMode: { type: string, enum: [all, full, incremental] }

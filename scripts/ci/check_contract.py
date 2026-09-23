@@ -417,8 +417,8 @@ def check_source_instance_shapes(doc):
     # TargetDatabase must mirror the frozen P0 example (form-schema.example.json).
     tgt = schemas.get("TargetDatabase") or {}
     tprops = tgt.get("properties") or {}
-    if tgt.get("additionalProperties") is not False:
-        problems += fail("TargetDatabase.additionalProperties must be false (frozen example)")
+    if tgt.get("additionalProperties") is not True:
+        problems += fail("TargetDatabase.additionalProperties must be true (round-trip; frozen example)")
     if list(tgt.get("required") or []) != ["host", "port", "user"]:
         problems += fail("TargetDatabase.required must be [host, port, user]")
     if list(tprops.keys()) != ["host", "port", "user", "password", "security", "session"]:
@@ -432,10 +432,10 @@ def check_source_instance_shapes(doc):
     if (tprops.get("session") or {}).get("additionalProperties", {}).get("type") != "string":
         problems += fail("TargetDatabase.session must be map<string,string>")
 
-    # TaskConfig.required must match the frozen example (name lives on TaskConfigWrite; taskMode has a default).
+    # TaskConfig.required must match the frozen example (name lives on TaskConfigWrite; taskMode required).
     cfg = schemas.get("TaskConfig") or {}
-    if list(cfg.get("required") or []) != ["sources"]:
-        problems += fail("TaskConfig.required must be [sources] (example parity; taskMode optional)")
+    if list(cfg.get("required") or []) != ["taskMode", "sources"]:
+        problems += fail("TaskConfig.required must be [taskMode, sources] (example parity)")
 
     # OpenAPI <-> frozen P0 example parity (closes the doc-vs-schema blind spot).
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
