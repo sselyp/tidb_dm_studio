@@ -580,17 +580,37 @@ def check_state_taxonomy(doc):
     return problems
 
 
-SENSITIVE_KEY_TOKENS = ("password", "passwd", "target_config")
+SENSITIVE_KEY_TOKENS = (
+    "password", "passwd", "secret", "token", "credential", "target_config",
+    "api_key", "apikey", "access_key", "accesskey", "private_key", "privatekey",
+    "client_secret", "dsn", "cert",
+)
+# Substrings marking a key as a *policy/config/metadata* field about a credential
+# rather than the credential value itself (passwordPolicy, passwordMinLength, tokenTtl,
+# certPath, secretName, ...). D16 targets values, so these must not false-positive.
+NON_SECRET_MARKERS = (
+    "policy", "minlength", "min_length", "maxlength", "max_length", "length",
+    "ttl", "expire", "expiry", "timeout", "duration", "interval",
+    "algorithm", "regex", "pattern", "format", "enabled", "count",
+    "must", "required", "path", "file", "files", "dir", "name", "type",
+    "url", "uri", "endpoint", "version", "issuer", "audience", "csrf",
+)
 
 
 def _is_credential_key(key):
-    """True only for credential *values*, not policy flags like mustChangePassword."""
-    k = key.lower()
-    if "target_config" in k:
-        return True
-    if "password" in k or "passwd" in k:
-        return "must" not in k
-    return False
+    """True only for credential *values*, not policy/config fields about one.
+
+    Name coverage expanded per DS-代码审核 finding F2: authToken / secret / privateKey /
+    dsn / cert / accessKey must be flagged (previously only password/passwd/target_config
+    were). The NON_SECRET_MARKERS exclusion keeps policy/config fields (passwordPolicy,
+    passwordMinLength, tokenTtl, certPath) from false-positiving.
+    """
+    k = str(key).lower()
+    if not any(tok in k for tok in SENSITIVE_KEY_TOKENS):
+        return False
+    if any(m in k for m in NON_SECRET_MARKERS):
+        return False
+    return True
 def _resolve_component(ref, container, components):
     """Resolve a `#/components/<container>/<name>` ref, else None."""
     if not (isinstance(ref, str) and ref.startswith("#/components/")):

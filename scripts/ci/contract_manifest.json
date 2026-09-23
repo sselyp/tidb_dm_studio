@@ -348,7 +348,7 @@
     "check_freeze"
   ],
   "mutations": {
-    "count": 86,
+    "count": 91,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -435,7 +435,12 @@
       "response-reachable writeOnly credential not in ownPathCredentialFields (SourceInstance)",
       "ownPath credential loses canary coverage",
       "response model outside old whitelist exposes password (Envelope)",
-      "request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)"
+      "request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)",
+      "Task response exposes authToken (D16 name coverage)",
+      "Task response exposes secret (D16 name coverage)",
+      "response model ValidationData exposes password (structural scan; F1 probe)",
+      "benign: password policy fields are not credentials",
+      "benign: token ttl is not a credential"
     ]
   }
 }

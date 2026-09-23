@@ -95,7 +95,7 @@ jobs:
           DM_BASE_URL: http://127.0.0.1:18080/api
         run: |
           /tmp/dm-web-canary & echo $! > /tmp/proxy.pid
-          sleep 2
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:18080/healthz >/dev/null && break; sleep 0.5; done
           python3 scripts/ci/test_credential_canary.py
           kill "$(cat /tmp/proxy.pid)"
       - name: Reverse control (scrub off) -> must detect leak (exit 0 per --expect-leak)
@@ -106,7 +106,7 @@ jobs:
           DM_SCRUB: "off"
         run: |
           /tmp/dm-web-canary & echo $! > /tmp/proxy.pid
-          sleep 2
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:18081/healthz >/dev/null && break; sleep 0.5; done
           python3 scripts/ci/test_credential_canary.py --expect-leak
           kill "$(cat /tmp/proxy.pid)"
 

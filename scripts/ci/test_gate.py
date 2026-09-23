@@ -238,6 +238,16 @@ MUTATIONS += [
     ("request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)", lambda d: d["components"]["schemas"]["TaskConfigUpdate"]["properties"].__setitem__("password", {"type": "string"}), True),
 ]
 
+# D16 credential-name coverage (DS-代码审核 finding F2): alternate credential names must be
+# caught; policy/config fields ABOUT a credential must not false-positive (architect seq=63 #3).
+MUTATIONS += [
+    ("Task response exposes authToken (D16 name coverage)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("authToken", {"type": "string"}), True),
+    ("Task response exposes secret (D16 name coverage)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("secret", {"type": "string"}), True),
+    ("response model ValidationData exposes password (structural scan; F1 probe)", lambda d: d["components"]["schemas"]["ValidationData"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("benign: password policy fields are not credentials", lambda d: d["components"]["schemas"]["Task"]["properties"].update({"passwordPolicy": {"type": "string"}, "passwordMinLength": {"type": "integer"}}), False),
+    ("benign: token ttl is not a credential", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("tokenTtl", {"type": "integer"}), False),
+]
+
 
 def assert_gate_manifest():
     """The manifest pins the mutation set so it cannot silently shrink.
