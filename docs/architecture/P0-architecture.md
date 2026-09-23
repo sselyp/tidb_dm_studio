@@ -142,6 +142,8 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 - **自有落库路径同口径**：`config.targetDatabase.password` 属**我方**落库/序列化路径（不在 DM 侧），读回任务时同样**不得回显**（键不存在，或值 `******`/空）。
 - 验证：`check_contract.py` 增反向断言（响应 schema 不得暴露 password 字段）+ 契约测试对 `/tasks` 响应做「无口令」断言；AC-SEC 增「经后端 `/tasks` 响应不得出现目标库口令」。
 - **金丝雀断言**：写入唯一口令后，遍历 `/api/tasks`、`/tasks/{name}`、`/tasks/{name}/status`、`/tasks/{name}/yaml` 及任一 4xx/5xx 错误体与服务端日志，断言**均不含金丝雀子串**。
+- **字符串 blob 通道（D16-A，红线）**：读模型**不得**暴露 `rawYaml`（或任何承载原始 `task.yaml` 文本）的响应字段——字符串内容无法用 schema 校验，内联 `target_config.password` 会从键名扫描与运行期 `scrub()` 双双漏过。因此：`rawYaml` 仅作**写通道**（`TaskYamlWrite`/`TaskYamlUpdate`，`writeOnly:true`，入 `writeOnlyRequestFields`）；`/tasks/{name}/yaml` **由结构化 `config` 渲染**（password 因 `writeOnly` 省略）；运行期 rawYaml 只作写入口，解析后凭据进 `SecretProvider`、**不持久化原串**、日志/审计不记；若响应将出现原始文档串则 **fail-closed**。
+- **门禁**：`check_contract.py` 登记 `x-credential-handling.stringBlobResponseForbidden`，**响应可达的字符串 blob 字段一律 FAIL**，并加 must-FAIL 变异「rawYaml 内联口令」；回归加结构断言「`Task` 无 `rawYaml`」+ 字符串内容扫描（`password:`/`passwd:` + 已知口令）。
 
 ## 11. DM OpenAPI v7.1.6 能力映射与缺口兜底（D17）
 
