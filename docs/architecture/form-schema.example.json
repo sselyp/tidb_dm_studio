@@ -6,7 +6,7 @@
     "title": "TaskConfig",
     "type": "object",
     "additionalProperties": true,
-    "required": ["sources"],
+    "required": ["taskMode", "sources"],
     "properties": {
       "taskMode": { "type": "string", "enum": ["all", "full", "incremental"], "default": "all" },
       "caseSensitive": { "type": "boolean", "default": false },
@@ -14,7 +14,7 @@
       "timezone": { "type": "string" },
       "targetDatabase": {
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "required": ["host", "port", "user"],
         "properties": {
           "host": { "type": "string" },
