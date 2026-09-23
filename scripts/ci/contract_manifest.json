@@ -1,5 +1,5 @@
 {
-  "version": "0.9.6",
+  "version": "0.9.7",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
   "actionTargetState": {
     "start": "running",
@@ -381,8 +381,8 @@
       "drop required 'valid' from ConnectivityResult",
       "drop required 'errors' from ConnectivityResult (want [] when valid)",
       "retired 50202 re-introduced into x-error-codes",
-      "drop E_SOURCE_UNREACHABLE from x-precheck-codes",
-      "drop E_TARGET_AUTH_FAILED from x-precheck-codes",
+      "drop PRECHECK_SOURCE_UNREACHABLE from x-precheck-codes",
+      "drop PRECHECK_TARGET_AUTH_FAILED from x-precheck-codes",
       "x-error-codes code prefix != http",
       "/task-precheck description reintroduces upstream-502 wording",
       "platformState re-introduces 'pending' (D14 forbids)",

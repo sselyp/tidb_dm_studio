@@ -127,8 +127,8 @@ MUTATIONS = [
     ("drop required 'valid' from ConnectivityResult", lambda d: require_field_pop(d, "ConnectivityResult", "valid"), True),
     ("drop required 'errors' from ConnectivityResult (want [] when valid)", lambda d: require_field_pop(d, "ConnectivityResult", "errors"), True),
     ("retired 50202 re-introduced into x-error-codes", reintroduce_retired_502, True),
-    ("drop E_SOURCE_UNREACHABLE from x-precheck-codes", lambda d: drop_precheck_code(d, "E_SOURCE_UNREACHABLE"), True),
-    ("drop E_TARGET_AUTH_FAILED from x-precheck-codes", lambda d: drop_precheck_code(d, "E_TARGET_AUTH_FAILED"), True),
+    ("drop PRECHECK_SOURCE_UNREACHABLE from x-precheck-codes", lambda d: drop_precheck_code(d, "PRECHECK_SOURCE_UNREACHABLE"), True),
+    ("drop PRECHECK_TARGET_AUTH_FAILED from x-precheck-codes", lambda d: drop_precheck_code(d, "PRECHECK_TARGET_AUTH_FAILED"), True),
     ("x-error-codes code prefix != http", misalign_error_code, True),
     ("/task-precheck description reintroduces upstream-502 wording", lambda d: d["paths"]["/task-precheck"]["post"].__setitem__("description", "level=connectivity 触达上游，失败回 502。"), True),
     # D14 (v0.9.2): six-state enum + `failed` state derivation must be pinned.

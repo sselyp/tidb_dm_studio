@@ -932,7 +932,7 @@ def check_diagnostic_codes(doc):
     """Upstream failures live in the diagnostic registry; retired 50202/50203 must not return."""
     problems = 0
     codes = {c.get("code") for c in doc.get("x-precheck-codes", []) if isinstance(c, dict)}
-    for need in ("E_SOURCE_UNREACHABLE", "E_TARGET_AUTH_FAILED"):
+    for need in ("PRECHECK_SOURCE_UNREACHABLE", "PRECHECK_TARGET_AUTH_FAILED"):
         if need not in codes:
             problems += fail(f"x-precheck-codes must register {need}")
     all_codes = codes | {c.get("code") for c in doc.get("x-error-codes", [])}

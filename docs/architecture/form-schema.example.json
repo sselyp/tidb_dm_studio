@@ -1,5 +1,5 @@
 {
-  "version": "0.9.6",
+  "version": "0.9.7",
   "jsonSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://github.com/sselyp/tidb_dm_studio/schemas/task-config.json",

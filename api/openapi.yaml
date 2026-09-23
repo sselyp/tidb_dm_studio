@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: TiDB DM 可视化平台 API
-  version: 0.9.6
+  version: 0.9.7
   description: |
-    后端接口契约 v0.9.6（对齐 DM v7.1.6，见 x-dm-compat；接口形状冻结见 x-freeze）。
+    后端接口契约 v0.9.7（对齐 DM v7.1.6，见 x-dm-compat；接口形状冻结见 x-freeze）。
     schema 双通道（D11）：`jsonSchema` 为纯标准 JSON Schema 2020-12（属性内无任何 `x-ui-*`），
     全部 UI 元数据在 `formLayout`（`ui` 以 JSON Pointer 为键 + `steps[].groups[].fields[]`）。
     cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
@@ -620,8 +620,8 @@ components:
             - PRECHECK_ROUTE_OVERLAP
             - PRECHECK_TASK_NAME_DUP
             - PRECHECK_CHARSET_TZ_MISMATCH
-            - E_SOURCE_UNREACHABLE
-            - E_TARGET_AUTH_FAILED
+            - PRECHECK_SOURCE_UNREACHABLE
+            - PRECHECK_TARGET_AUTH_FAILED
         message: { type: string }
         severity: { type: string, enum: [error, warning, info] }
     ValidationData:
@@ -938,8 +938,8 @@ x-precheck-codes:
   - { code: PRECHECK_ROUTE_OVERLAP, rule: 源间 route-rules 目标范围相互覆盖 }
   - { code: PRECHECK_TASK_NAME_DUP, rule: 目标表名映射后同名 }
   - { code: PRECHECK_CHARSET_TZ_MISMATCH, rule: 上游字符集/时区不一致 }
-  - { code: E_SOURCE_UNREACHABLE, name: E_SOURCE_UNREACHABLE, rule: 上游 source 不可达（诊断域：200 + data.valid=false；不得复用退役 50202 编号） }
-  - { code: E_TARGET_AUTH_FAILED, name: E_TARGET_AUTH_FAILED, rule: 目标鉴权失败（诊断域：200 + data.valid=false；不得复用退役 50203 编号） }
+  - { code: PRECHECK_SOURCE_UNREACHABLE, name: PRECHECK_SOURCE_UNREACHABLE, rule: 上游 source 不可达（诊断域：200 + data.valid=false；不得复用退役 50202 编号） }
+  - { code: PRECHECK_TARGET_AUTH_FAILED, name: PRECHECK_TARGET_AUTH_FAILED, rule: 目标鉴权失败（诊断域：200 + data.valid=false；不得复用退役 50203 编号） }
 x-config-storage:
   mode: materialized
   description: >-
@@ -947,7 +947,7 @@ x-config-storage:
     有效配置后落库；读取接口恒返回合并后的有效 per-source 配置，前端不做隐式合并。
     config hash（下发去重/幂等/审计 beforeHash）对落库的展开内容计算，语义等价的两套写法 hash 一致。
 x-freeze:
-  version: 0.9.6
+  version: 0.9.7
   scope: 接口形状（paths/schemas/错误码/状态机/凭据处理/D11 双通道）冻结；只允许增量可选字段，不得改已冻结形状。
   deferred:
     - "DM 版本相关可选字段（online-ddl / validators 等，见 task-config-schema.md §7）增量上图，不改形状"
