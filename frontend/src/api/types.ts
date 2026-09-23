@@ -1,4 +1,4 @@
-// Types mirroring api/openapi.yaml (v0.9.2). Keep in sync with the contract.
+// Types mirroring api/openapi.yaml (v0.9.4). Keep in sync with the contract.
 
 import { FieldErrorCodes, PrecheckCodes } from "./errorCodes";
 
