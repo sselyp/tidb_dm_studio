@@ -346,7 +346,7 @@
     "check_freeze"
   ],
   "mutations": {
-    "count": 77,
+    "count": 82,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -424,7 +424,12 @@
       "SchemaData.jsonSchema gains an x-ui-* hint (D11 UI leak)",
       "SchemaData loses formLayout (D11 UI channel removed)",
       "SchemaData.version stops tracking info.version",
-      "x-freeze.version drifts from info.version"
+      "x-freeze.version drifts from info.version",
+      "TaskConfig.required drops taskMode (example requires it)",
+      "TargetDatabase.required dropped (example requires host/port/user)",
+      "TargetDatabase.additionalProperties flips vs example",
+      "TargetDatabase.security dropped (example keeps it)",
+      "example.version drifts from info.version (frozen doc ground truth)"
     ]
   }
 }

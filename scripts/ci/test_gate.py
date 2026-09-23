@@ -213,6 +213,34 @@ MUTATIONS += [
     ("x-freeze.version drifts from info.version", lambda d: d["x-freeze"].__setitem__("version", "0.0.0"), True),
 ]
 
+# Frozen example parity (review seq=94): the spec TaskConfig subtree must not drift from
+# docs/architecture/form-schema.example.json (the renderer's ground truth). Each must FAIL
+# AND land on the specific example-parity assertion (see EXPECT_SUBSTR below).
+MUTATIONS += [
+    ("TaskConfig.required drops taskMode (example requires it)", lambda d: d["components"]["schemas"]["TaskConfig"]["required"].remove("taskMode"), True),
+    ("TargetDatabase.required dropped (example requires host/port/user)", lambda d: d["components"]["schemas"]["TargetDatabase"].pop("required"), True),
+    ("TargetDatabase.additionalProperties flips vs example", lambda d: d["components"]["schemas"]["TargetDatabase"].__setitem__("additionalProperties", False), True),
+    ("TargetDatabase.security dropped (example keeps it)", lambda d: d["components"]["schemas"]["TargetDatabase"]["properties"].pop("security"), True),
+]
+
+# The frozen example *document* is itself the parity target. check_contract resolves it from
+# its own __file__-relative root, so these run against a mirrored root (checker+manifest+spec
+# copies) — the mutation acts on a copy, never the repo file, and stays deterministic.
+EXAMPLE_MUTATIONS = [
+    ("example.version drifts from info.version (frozen doc ground truth)", lambda ex: ex.__setitem__("version", "0.0.0")),
+]
+
+# Constraint (review seq=94 / architect seq=102): a mutation must trip the *intended*
+# assertion, not merely any non-zero exit. For these parity mutations we assert the
+# checker's stdout carries the matching FAIL line.
+EXPECT_SUBSTR = {
+    "TaskConfig.required drops taskMode (example requires it)": "TaskConfig.required must be [taskMode, sources]",
+    "TargetDatabase.required dropped (example requires host/port/user)": "TargetDatabase.required must be [host, port, user]",
+    "TargetDatabase.additionalProperties flips vs example": "TargetDatabase.additionalProperties must be true",
+    "TargetDatabase.security dropped (example keeps it)": "TargetDatabase.properties must be [host,port,user,password,security,session]",
+    "example.version drifts from info.version (frozen doc ground truth)": "form-schema.example.json version",
+}
+
 
 def assert_gate_manifest():
     """The manifest pins the mutation set so it cannot silently shrink.
@@ -222,9 +250,10 @@ def assert_gate_manifest():
     """
     with open(MANIFEST, encoding="utf-8") as f:
         pinned = json.load(f).get("mutations") or {}
-    names = [name for name, _, _ in MUTATIONS]
-    if pinned.get("count") != len(MUTATIONS):
-        return f"manifest.mutations.count {pinned.get('count')} != actual {len(MUTATIONS)}"
+    names = [name for name, _, _ in MUTATIONS] + [name for name, _ in EXAMPLE_MUTATIONS]
+    total = len(MUTATIONS) + len(EXAMPLE_MUTATIONS)
+    if pinned.get("count") != total:
+        return f"manifest.mutations.count {pinned.get('count')} != actual {total}"
     if list(pinned.get("names") or []) != names:
         return (
             "manifest.mutations.names != actual MUTATIONS list "
@@ -257,18 +286,68 @@ def main():
         with open(p, "w", encoding="utf-8") as f:
             yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
         r = subprocess.run([sys.executable, CHECKER, p], capture_output=True, text=True)
+        out = r.stdout + r.stderr
         caught = r.returncode != 0
-        if must_fail and not caught:
+        exp = EXPECT_SUBSTR.get(name)
+        hit = exp is None or exp in out
+        if must_fail and (not caught or not hit):
             holes.append(name)
-            print(f"  HOLE          {name}")
+            if caught and not hit:
+                print(f"  HOLE          {name} (wrong assertion: expected {exp!r})")
+            else:
+                print(f"  HOLE          {name}")
         elif not must_fail and caught:
             fps.append(name)
             print(f"  FALSE-POSITIVE {name}")
         else:
             print(f"  OK            {name}")
+
+    # Frozen-doc parity mutations: check_contract resolves the example from its own
+    # __file__-relative root, so run the checker from a mirrored copy of that root.
+    example_src = os.path.join(
+        os.path.dirname(os.path.dirname(HERE)), "docs", "architecture", "form-schema.example.json"
+    )
+    with open(example_src, encoding="utf-8") as f:
+        ex_base = json.load(f)
+    mirror = os.path.join(tmpdir, "mirror")
+    os.makedirs(os.path.join(mirror, "scripts", "ci"), exist_ok=True)
+    os.makedirs(os.path.join(mirror, "api"), exist_ok=True)
+    os.makedirs(os.path.join(mirror, "docs", "architecture"), exist_ok=True)
+    m_checker = os.path.join(mirror, "scripts", "ci", "check_contract.py")
+    m_spec = os.path.join(mirror, "api", "openapi.yaml")
+    m_example = os.path.join(mirror, "docs", "architecture", "form-schema.example.json")
+    shutil.copyfile(CHECKER, m_checker)
+    shutil.copyfile(MANIFEST, os.path.join(mirror, "scripts", "ci", "contract_manifest.json"))
+    with open(m_spec, "w", encoding="utf-8") as f:
+        yaml.safe_dump(base, f, allow_unicode=True, sort_keys=False)
+    for name, ex_mutate in EXAMPLE_MUTATIONS:
+        ex = copy.deepcopy(ex_base)
+        try:
+            ex_mutate(ex)
+        except Exception as e:
+            unapplied.append(name)
+            print(f"  UNAPPLIED     {name} (binding absent: {e})")
+            continue
+        with open(m_example, "w", encoding="utf-8") as f:
+            json.dump(ex, f, ensure_ascii=False, indent=2)
+        r = subprocess.run([sys.executable, m_checker, m_spec], capture_output=True, text=True)
+        out = r.stdout + r.stderr
+        caught = r.returncode != 0
+        exp = EXPECT_SUBSTR.get(name)
+        hit = exp is None or exp in out
+        if not caught or not hit:
+            holes.append(name)
+            if caught and not hit:
+                print(f"  HOLE          {name} (wrong assertion: expected {exp!r})")
+            else:
+                print(f"  HOLE          {name}")
+        else:
+            print(f"  OK            {name}")
+
     shutil.rmtree(tmpdir, ignore_errors=True)
+    total = len(MUTATIONS) + len(EXAMPLE_MUTATIONS)
     print(
-        f"\n{len(MUTATIONS)} mutations: {len(holes)} hole(s) [checker missed], "
+        f"\n{total} mutations: {len(holes)} hole(s) [checker missed], "
         f"{len(unapplied)} unapplied [binding absent in spec], {len(fps)} false positive(s)"
     )
     return 1 if (holes or fps or unapplied) else 0
