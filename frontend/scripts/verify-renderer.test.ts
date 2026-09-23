@@ -88,6 +88,20 @@ describe("schema shape (frozen D11 P0 example)", () => {
     ]);
   });
 
+  it("/targetDatabase matches frozen TargetDatabase (host,port,user required; password writeOnly)", () => {
+    const node = resolveSchemaNode(root, "/targetDatabase");
+    expect(node?.additionalProperties).toBe(false);
+    expect(node?.required).toEqual(["host", "port", "user"]);
+    expect(Object.keys(node?.properties ?? {})).toEqual([
+      "host",
+      "port",
+      "user",
+      "password",
+      "session",
+    ]);
+    expect(resolveSchemaNode(root, "/targetDatabase/password")?.writeOnly).toBe(true);
+  });
+
   it("mydumpers item properties", () => {
     expect(
       Object.keys(
