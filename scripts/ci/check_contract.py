@@ -558,7 +558,11 @@ def _credential_hits(node, path, schemas, seen=None):
             return hits
         for key, val in node.items():
             if _is_credential_key(key):
-                hits.append(f"{path}.{key}")
+                target = val
+                if isinstance(val, dict) and isinstance(val.get("$ref"), str) and val["$ref"].startswith("#/components/schemas/"):
+                    target = schemas.get(val["$ref"].rsplit("/", 1)[-1], val)
+                if not (isinstance(target, dict) and target.get("writeOnly") is True):
+                    hits.append(f"{path}.{key}")
             hits.extend(_credential_hits(val, f"{path}.{key}", schemas, seen))
     elif isinstance(node, list):
         for i, val in enumerate(node):
@@ -833,6 +837,92 @@ def check_healthz_public(doc):
     return 0
 
 
+def check_own_path_credential(doc):
+    """AC-SEC①: own-path target credential is input-only; never echoed on read.
+
+    TaskConfig is shared by the write models AND the read model Task.config. If its
+    targetDatabase.password were not writeOnly:true, a write would be echoed back by
+    GET /tasks/{name} and /tasks/{name}/yaml. DM v7.1.6 GET /api/v1/tasks returns
+    target_config.password in clear, so the proxy owns this on both sides.
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    td = (schemas.get("TaskConfig", {}).get("properties") or {}).get("targetDatabase")
+    if not isinstance(td, dict):
+        return fail("TaskConfig.targetDatabase missing (own-path target DB input channel)")
+    if not td.get("$ref", "").endswith("/TargetDatabase"):
+        problems += fail("TaskConfig.targetDatabase must $ref TargetDatabase")
+    tdb = schemas.get("TargetDatabase")
+    if not isinstance(tdb, dict):
+        return problems + fail("TargetDatabase schema missing")
+    pw = (tdb.get("properties") or {}).get("password")
+    if not isinstance(pw, dict):
+        return problems + fail("TargetDatabase.password missing (must exist as a writeOnly input channel)")
+    if pw.get("writeOnly") is not True:
+        problems += fail("TargetDatabase.password must set writeOnly:true (D16 own-path no-echo)")
+    ch = doc.get("x-credential-handling") or {}
+    if "TaskConfig.targetDatabase.password" not in (ch.get("ownPathCredentialFields") or []):
+        problems += fail("x-credential-handling.ownPathCredentialFields must pin TaskConfig.targetDatabase.password")
+    if "TaskConfig.targetDatabase.password" not in (ch.get("writeOnlyRequestFields") or []):
+        problems += fail("x-credential-handling.writeOnlyRequestFields must include TaskConfig.targetDatabase.password")
+    if schemas.get("Task", {}).get("properties", {}).get("config", {}).get("$ref", "") != "#/components/schemas/TaskConfig":
+        problems += fail("Task.config must $ref TaskConfig (single read/write model, so writeOnly is load-bearing)")
+    return problems
+
+
+def _find_schema_keys_with_prefix(node, prefix):
+    hits = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if str(k).startswith(prefix):
+                hits.append(k)
+            hits.extend(_find_schema_keys_with_prefix(v, prefix))
+    elif isinstance(node, list):
+        for v in node:
+            hits.extend(_find_schema_keys_with_prefix(v, prefix))
+    return hits
+
+
+def check_schema_ui_channel(doc):
+    """D11: jsonSchema is pure JSON Schema 2020-12 (no x-ui-*); UI only in formLayout."""
+    problems = 0
+    sd = doc["components"]["schemas"].get("SchemaData")
+    if not isinstance(sd, dict):
+        return fail("SchemaData schema missing (GET /task-schema payload)")
+    props = sd.get("properties") or {}
+    for field in ("version", "jsonSchema", "formLayout"):
+        if field not in (sd.get("required") or []):
+            problems += fail(f"SchemaData.required must include '{field}'")
+    js = props.get("jsonSchema") or {}
+    if js.get("type") != "object":
+        problems += fail("SchemaData.jsonSchema must be type: object")
+    hits = _find_schema_keys_with_prefix(js, "x-ui")
+    if hits:
+        problems += fail(f"jsonSchema must not embed UI hints: {hits} (D11: UI lives in formLayout)")
+    jdesc = js.get("description") or ""
+    if "2020-12" not in jdesc or "x-ui-" not in jdesc:
+        problems += fail("jsonSchema.description must document pure 2020-12 and the no-x-ui-* rule")
+    fl = props.get("formLayout")
+    if not isinstance(fl, dict):
+        problems += fail("SchemaData.formLayout missing (D11 UI channel)")
+    elif "JSON Pointer" not in (fl.get("description") or ""):
+        problems += fail("formLayout.description must document the JSON-Pointer-keyed 'ui' channel")
+    vdesc = (props.get("version") or {}).get("description") or ""
+    if "info.version" not in vdesc:
+        problems += fail("SchemaData.version.description must state it follows info.version")
+    return problems
+
+
+def check_freeze(doc):
+    """x-freeze marker must not drift from info.version and must scope the frozen surface."""
+    fz = doc.get("x-freeze") or {}
+    if str(fz.get("version")) != str(doc["info"]["version"]):
+        return fail(f"x-freeze.version {fz.get('version')} != info.version {doc['info']['version']}")
+    if not fz.get("scope"):
+        return fail("x-freeze.scope must state the frozen surface")
+    return 0
+
+
 CHECKS = [
     check_error_code_prefix,
     check_no_top_level_errors,
@@ -867,6 +957,9 @@ CHECKS = [
     check_precheck_description,
     check_502_scope,
     check_healthz_public,
+    check_own_path_credential,
+    check_schema_ui_channel,
+    check_freeze,
 ]
 
 

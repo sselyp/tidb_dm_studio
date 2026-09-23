@@ -37,6 +37,13 @@ jobs:
           else
             echo "check_contract.py or api/openapi.yaml missing, skipping gate self-test"
           fi
+      - name: Credential canary scanner self-test
+        run: |
+          if [ -f scripts/ci/test_credential_canary.py ]; then
+            python3 scripts/ci/test_credential_canary.py --selfcheck
+          else
+            echo "test_credential_canary.py not present yet, skipping"
+          fi
       - name: No hardcoded addresses / credentials
         run: |
           if [ -f scripts/ci/check_no_hardcoded.sh ]; then
