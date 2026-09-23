@@ -424,6 +424,71 @@ def _array_shape(p):
     return f"{p.get('type', '?')}<{items_desc}>"
 
 
+FROZEN_EXAMPLE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "docs",
+    "architecture",
+    "form-schema.example.json",
+)
+
+
+def _load_frozen_example():
+    with open(FROZEN_EXAMPLE, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def check_frozen_example_parity(doc):
+    """docs/architecture/form-schema.example.json must not drift from the frozen spec surface.
+
+    The example is the frontend renderer's ground truth (schema-driven forms), so the
+    TaskConfig subtree must match api/openapi.yaml exactly — otherwise the renderer silently
+    renders a shape the backend rejects (or vice-versa). Closes the blind spot flagged by
+    review: `TargetDatabase` and `TaskConfig.required` (taskMode) were previously unasserted,
+    and the example `version` could lag `info.version`.
+    """
+    problems = 0
+    if not os.path.exists(FROZEN_EXAMPLE):
+        return fail("frozen example docs/architecture/form-schema.example.json missing")
+    ex = _load_frozen_example()
+    schemas = doc["components"]["schemas"]
+    js = ex.get("jsonSchema") or {}
+
+    if str(ex.get("version")) != str(doc["info"]["version"]):
+        problems += fail(
+            f"example.version {ex.get('version')} != info.version {doc['info']['version']}"
+        )
+
+    ex_req = set(js.get("required") or [])
+    spec_req = set(schemas["TaskConfig"].get("required") or [])
+    if ex_req != spec_req:
+        problems += fail(
+            f"example jsonSchema.required {sorted(ex_req)} != TaskConfig.required {sorted(spec_req)}"
+        )
+
+    ex_td = (js.get("properties") or {}).get("targetDatabase") or {}
+    spec_td = schemas.get("TargetDatabase") or {}
+    if set(ex_td.get("required") or []) != set(spec_td.get("required") or []):
+        problems += fail(
+            f"example targetDatabase.required {sorted(set(ex_td.get('required') or []))} "
+            f"!= TargetDatabase.required {sorted(set(spec_td.get('required') or []))}"
+        )
+    ex_props = set((ex_td.get("properties") or {}).keys())
+    spec_props = set((spec_td.get("properties") or {}).keys())
+    if ex_props != spec_props:
+        problems += fail(
+            f"example targetDatabase properties {sorted(ex_props)} != TargetDatabase {sorted(spec_props)}"
+        )
+    if ex_td.get("additionalProperties") != spec_td.get("additionalProperties"):
+        problems += fail(
+            f"example targetDatabase.additionalProperties {ex_td.get('additionalProperties')} "
+            f"!= spec {spec_td.get('additionalProperties')} (both ends must match)"
+        )
+    for side, td in (("example", ex_td), ("spec", spec_td)):
+        if "security" not in (td.get("properties") or {}):
+            problems += fail(f"{side} targetDatabase must expose security (DM task.yaml target-database key)")
+    return problems
+
+
 ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
 
 
@@ -526,18 +591,42 @@ def _is_credential_key(key):
     if "password" in k or "passwd" in k:
         return "must" not in k
     return False
-# read/response models that must never carry an upstream credential
-CREDENTIAL_FREE_MODELS = (
-    "Task",
-    "TaskSummary",
-    "TaskStatusData",
-    "StateData",
-    "DataSource",
-    "ConnectivityResult",
-    "LogPageData",
-    "MeData",
-    "SchemaData",
-)
+def _resolve_component(ref, container, components):
+    """Resolve a `#/components/<container>/<name>` ref, else None."""
+    if not (isinstance(ref, str) and ref.startswith("#/components/")):
+        return None
+    parts = ref.rsplit("/", 2)
+    if len(parts) != 3 or parts[1] != container:
+        return None
+    return (components.get(container) or {}).get(parts[2])
+
+
+def _operation_media_schemas(doc, section):
+    """Every media-type schema declared by any operation's responses/requestBody.
+
+    Derived from the spec (DS-代码审核 seq: no hand-maintained model whitelist), so a
+    newly added response/request model is scanned automatically — closing the
+    "new model with a credential slips past the whitelist" gap.
+    """
+    components = doc.get("components") or {}
+    container = "requestBodies" if section == "requestBody" else "responses"
+    for path_item in (doc.get("paths") or {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        for op in path_item.values():
+            if not isinstance(op, dict):
+                continue
+            if section == "requestBody":
+                bodies = [op.get("requestBody")]
+            else:
+                bodies = list((op.get("responses") or {}).values())
+            for body in bodies:
+                if not isinstance(body, dict):
+                    continue
+                node = _resolve_component(body.get("$ref"), container, components) or body
+                for media in (node.get("content") or {}).values():
+                    if isinstance(media, dict) and isinstance(media.get("schema"), dict):
+                        yield media["schema"]
 
 
 def _cred_tails(own_paths):
@@ -635,19 +724,19 @@ def check_no_credential_echo(doc):
             problems += fail(f"x-credential-handling.neverInResponses must include '{tok}'")
     if not ch.get("stripFromUpstreamResponses"):
         problems += fail("x-credential-handling.stripFromUpstreamResponses must list DM passthrough fields")
-    for name in CREDENTIAL_FREE_MODELS:
-        sch = schemas.get(name)
-        if not sch:
-            continue
-        for hit in _credential_hits(sch, [name], schemas, None, _cred_tails(ch.get("ownPathCredentialFields"))):
+    # Response side: scan every response-reachable media schema (structurally derived),
+    # skipping only credentials registered in ownPathCredentialFields (whose runtime
+    # no-echo guarantee is pinned by the canary via check_own_path_canary_coverage).
+    own_tails = _cred_tails(ch.get("ownPathCredentialFields"))
+    for schema in _operation_media_schemas(doc, "responses"):
+        for hit in _credential_hits(schema, ["<response>"], schemas, None, own_tails):
             problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
-    # request-side credentials must be writeOnly (input-only, never echoed back)
-    for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):
-        sch = schemas.get(parent) or {}
-        for key, prop in (sch.get("properties") or {}).items():
-            if _is_credential_key(key):
-                if prop.get("writeOnly") is not True:
-                    problems += fail(f"{parent}.{key} must set writeOnly:true (D16 input-only)")
+    # Request side: every request-reachable credential must be writeOnly AND registered
+    # in writeOnlyRequestFields (input-only channel, never echoed back).
+    req_tails = _cred_tails(ch.get("writeOnlyRequestFields"))
+    for schema in _operation_media_schemas(doc, "requestBody"):
+        for hit in _credential_hits(schema, ["<request>"], schemas, None, req_tails):
+            problems += fail(f"request schema {hit} must be a writeOnly, registered credential (D16 input-only)")
     return problems
 
 
@@ -1014,6 +1103,7 @@ CHECKS = [
     check_dm_compat,
     check_task_config_isomorphic,
     check_source_instance_shapes,
+    check_frozen_example_parity,
     check_allowed_actions,
     check_no_credential_echo,
     check_manifest,

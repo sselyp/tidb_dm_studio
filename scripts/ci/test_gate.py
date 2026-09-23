@@ -186,6 +186,15 @@ MUTATIONS += [
     ("BlockAllowList loses tablePattern requirement", lambda d: d["components"]["schemas"]["BlockAllowList"]["required"].remove("tablePattern"), True),
 ]
 
+# Frozen example parity (review seq=94): the spec TaskConfig subtree must not drift from
+# docs/architecture/form-schema.example.json (renderer ground truth).
+MUTATIONS += [
+    ("TaskConfig.required drops taskMode (example requires it)", lambda d: d["components"]["schemas"]["TaskConfig"]["required"].remove("taskMode"), True),
+    ("TargetDatabase.required dropped (example requires host/port/user)", lambda d: d["components"]["schemas"]["TargetDatabase"].pop("required", None), True),
+    ("TargetDatabase.additionalProperties flips vs example", lambda d: d["components"]["schemas"]["TargetDatabase"].__setitem__("additionalProperties", False), True),
+    ("TargetDatabase.security dropped (example keeps it)", lambda d: d["components"]["schemas"]["TargetDatabase"]["properties"].pop("security", None), True),
+]
+
 # D16 redline: read models must not echo credentials; request credentials stay writeOnly.
 MUTATIONS += [
     ("Task response exposes password (D16 regression)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("password", {"type": "string"}), True),
@@ -217,7 +226,16 @@ MUTATIONS += [
 # may only skip the no-echo scan when it is registered as an own path AND canary-covered.
 MUTATIONS += [
     ("response-reachable writeOnly credential without ownPath registration", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string", "writeOnly": True}), True),
+    ("response-reachable writeOnly credential not in ownPathCredentialFields (SourceInstance)", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("password", {"type": "string", "writeOnly": True}), True),
     ("ownPath credential loses canary coverage", lambda d: d["x-credential-handling"].__setitem__("canaryCoveredFields", []), True),
+]
+
+# Structural credential scope (DS-代码审核 seq: replace hand-enumerated whitelist with
+# response/request-reachability derivation). A model OUTSIDE the old whitelist must still
+# be scanned: Envelope is reachable from every response, TaskConfigUpdate from PUT /tasks/{name}.
+MUTATIONS += [
+    ("response model outside old whitelist exposes password (Envelope)", lambda d: d["components"]["schemas"]["Envelope"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)", lambda d: d["components"]["schemas"]["TaskConfigUpdate"]["properties"].__setitem__("password", {"type": "string"}), True),
 ]
 
 

@@ -806,13 +806,14 @@ components:
         /tasks/{name}/yaml 导出、日志/审计）一律不得回显（D16 自有路径）。
       type: object
       additionalProperties: true
+      required: [host, port, user]
       properties:
         host: { type: string }
-        port: { type: integer }
+        port: { type: integer, minimum: 1, maximum: 65535 }
         user: { type: string }
         password: { type: string, writeOnly: true }
         security: { type: object, additionalProperties: true }
-        session: { type: object, additionalProperties: true }
+        session: { type: object, additionalProperties: { type: string } }
     Task:
       type: object
       properties:
@@ -834,7 +835,7 @@ components:
         **任务名 `name` 在写侧顶层（`TaskConfigWrite.name`），不在 `TaskConfig`（config）内**；
         故 `GET /task-schema` 的 `jsonSchema.required` 不得包含 `/name`（唯一真源为顶层 name）。
       type: object
-      required: [sources]
+      required: [taskMode, sources]
       additionalProperties: true
       properties:
         taskMode: { type: string, enum: [all, full, incremental] }

@@ -327,6 +327,7 @@
     "check_dm_compat",
     "check_task_config_isomorphic",
     "check_source_instance_shapes",
+    "check_frozen_example_parity",
     "check_allowed_actions",
     "check_no_credential_echo",
     "check_manifest",
@@ -347,7 +348,7 @@
     "check_freeze"
   ],
   "mutations": {
-    "count": 79,
+    "count": 86,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -412,6 +413,10 @@
       "SourceInstance.filters back to object[]",
       "SourceInstance.blockAllowList back to free object",
       "BlockAllowList loses tablePattern requirement",
+      "TaskConfig.required drops taskMode (example requires it)",
+      "TargetDatabase.required dropped (example requires host/port/user)",
+      "TargetDatabase.additionalProperties flips vs example",
+      "TargetDatabase.security dropped (example keeps it)",
       "Task response exposes password (D16 regression)",
       "DataSource response exposes target_config.password (D16)",
       "x-credential-handling redline removed",
@@ -427,7 +432,10 @@
       "SchemaData.version stops tracking info.version",
       "x-freeze.version drifts from info.version",
       "response-reachable writeOnly credential without ownPath registration",
-      "ownPath credential loses canary coverage"
+      "response-reachable writeOnly credential not in ownPathCredentialFields (SourceInstance)",
+      "ownPath credential loses canary coverage",
+      "response model outside old whitelist exposes password (Envelope)",
+      "request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)"
     ]
   }
 }
