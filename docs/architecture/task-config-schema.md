@@ -177,6 +177,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | 数组内 unique 键重复（如 `/routes[*].name`、`/filters[*].name`） | `UNIQUE` | `E_FIELD_DUPLICATE` |
 | 引用对象不存在（`/sources[*].sourceRef`、`/sources/*/filters[j]`、`/sources/*/routeRules[j]`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
 
+- **唯一性归属**：`RouteRule.name`、`Filter.name` 等**数组内重名** → `E_FIELD_DUPLICATE`（`UNIQUE`，`fieldPath` 指向 `/routes/<i>/name`、`/filters/<i>/name`）；**任务名/目标表名全局唯一**（跨任务冲突）属预检，走 `PRECHECK_TASK_NAME_DUP`，**不**用 `E_FIELD_DUPLICATE`。
 - 信封码恒为 `42201 E_VALIDATION_FAILED`（HTTP 422）；字段细节只在 `data.errors[]`。
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
