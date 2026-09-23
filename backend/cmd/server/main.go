@@ -10,6 +10,8 @@
 //   DM_MASTER_ADDRS     dm-master base URL        (default http://127.0.0.1:8261;
 //                       AC-SEC sets DM_MASTER_ADDRS=http://<dm-host>:8261)
 //   DM_UPSTREAM_PREFIX  dm-master API prefix      (default /api/v1)
+//   DM_SCRUB            negative control only; ignored by default, honored ONLY in
+//                       `go build -tags canary` builds (see scrub_canary.go)
 package main
 
 import (
@@ -29,14 +31,20 @@ var (
 	upPrefix   = env("DM_UPSTREAM_PREFIX", "/api/v1")
 	client     = &http.Client{Timeout: 10 * time.Second}
 
-	// DM_SCRUB=off disables credential stripping. It exists ONLY so the canary
-	// gate can be proven to actually detect a leak (negative control); never use
-	// it in a real deployment.
-	scrubEnabled = env("DM_SCRUB", "on") != "off"
+	// Credential stripping is always on. DM_SCRUB=off is honored ONLY in canary
+	// builds (`go build -tags canary`), never in a production binary, so the D16
+	// zero-echo redline cannot be disabled by a leaked environment variable.
+	scrubEnabled = true
 
 	mu    sync.RWMutex
 	store = map[string]map[string]any{}
 )
+
+func init() {
+	if o := canaryScrubOverride(); o != nil {
+		scrubEnabled = *o
+	}
+}
 
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {

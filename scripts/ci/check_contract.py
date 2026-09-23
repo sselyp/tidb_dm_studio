@@ -540,34 +540,81 @@ CREDENTIAL_FREE_MODELS = (
 )
 
 
-def _credential_hits(node, path, schemas, seen=None):
+def _cred_tails(own_paths):
+    """Registered own-path fields -> their property-key tail (drop the model head).
+
+    A registered field like `TaskConfig.targetDatabase.password` is the property chain
+    `targetDatabase.password` inside its model; the credential walk yields the same chain
+    (head = read model). Comparing tails keeps `$ref` aliases (Task.config -> TaskConfig)
+    transparent without weakening the "unregistered => FAIL" rule.
+    """
+    tails = []
+    for p in own_paths or []:
+        toks = [t for t in str(p).split(".") if t]
+        tails.append(toks[1:] if len(toks) > 1 else toks)
+    return tails
+
+
+def _cred_chain_registered(chain, tails):
+    ct = chain[1:] if len(chain) > 1 else chain
+    for rt in tails:
+        if rt and len(ct) >= len(rt) and ct[-len(rt):] == rt:
+            return True
+    return False
+
+
+def _credential_hits(node, chain, schemas, seen=None, own_tails=()):
     """Walk a response model, dereferencing local `$ref`s so a credential hidden behind
-    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught."""
+    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught.
+
+    A `writeOnly: true` field is skipped ONLY when its property chain matches an own-path
+    field registered in x-credential-handling.ownPathCredentialFields. OpenAPI `writeOnly`
+    is a serialization convention and does NOT remove the field from a response schema, so
+    an unregistered (or otherwise uncovered) response credential is a FAIL, not a silent
+    skip (DS-代码审核 seq=16).
+    """
     if seen is None:
         seen = set()
+    if not isinstance(node, dict):
+        return []
+    ref = node.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+        name = ref.rsplit("/", 1)[-1]
+        if name in seen:
+            return []
+        target = schemas.get(name)
+        if isinstance(target, dict):
+            return _credential_hits(target, chain, schemas, seen | {name}, own_tails)
+        return []
     hits = []
-    if isinstance(node, dict):
-        ref = node.get("$ref")
-        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
-            name = ref.rsplit("/", 1)[-1]
-            if name in seen:
-                return hits
-            target = schemas.get(name)
-            if target is not None:
-                hits.extend(_credential_hits(target, f"{path}->{name}", schemas, seen | {name}))
-            return hits
-        for key, val in node.items():
-            if _is_credential_key(key):
-                target = val
-                if isinstance(val, dict) and isinstance(val.get("$ref"), str) and val["$ref"].startswith("#/components/schemas/"):
-                    target = schemas.get(val["$ref"].rsplit("/", 1)[-1], val)
-                if not (isinstance(target, dict) and target.get("writeOnly") is True):
-                    hits.append(f"{path}.{key}")
-            hits.extend(_credential_hits(val, f"{path}.{key}", schemas, seen))
-    elif isinstance(node, list):
-        for i, val in enumerate(node):
-            hits.extend(_credential_hits(val, f"{path}[{i}]", schemas, seen))
+    props = node.get("properties")
+    if isinstance(props, dict):
+        for pname, pschema in props.items():
+            child = chain + [str(pname)]
+            if _is_credential_key(pname):
+                target = pschema
+                if isinstance(pschema, dict) and isinstance(pschema.get("$ref"), str) and pschema["$ref"].startswith("#/components/schemas/"):
+                    target = schemas.get(pschema["$ref"].rsplit("/", 1)[-1], pschema)
+                allowed = (
+                    isinstance(target, dict)
+                    and target.get("writeOnly") is True
+                    and _cred_chain_registered(child, own_tails)
+                )
+                if not allowed:
+                    hits.append(".".join(child))
+            hits.extend(_credential_hits(pschema, child, schemas, seen, own_tails))
+    for key in ("items", "additionalProperties", "not"):
+        sub = node.get(key)
+        if isinstance(sub, dict):
+            hits.extend(_credential_hits(sub, chain, schemas, seen, own_tails))
+    for key in ("allOf", "anyOf", "oneOf", "prefixItems"):
+        sub = node.get(key)
+        if isinstance(sub, list):
+            for item in sub:
+                hits.extend(_credential_hits(item, chain, schemas, seen, own_tails))
     return hits
+
+
 
 
 def check_no_credential_echo(doc):
@@ -592,7 +639,7 @@ def check_no_credential_echo(doc):
         sch = schemas.get(name)
         if not sch:
             continue
-        for hit in _credential_hits(sch, name, schemas):
+        for hit in _credential_hits(sch, [name], schemas, None, _cred_tails(ch.get("ownPathCredentialFields"))):
             problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
     # request-side credentials must be writeOnly (input-only, never echoed back)
     for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):
@@ -870,6 +917,30 @@ def check_own_path_credential(doc):
     return problems
 
 
+def check_own_path_canary_coverage(doc):
+    """Every own-path credential that is allowed to skip the D16 no-echo scan MUST be
+    covered by the AC-SEC canary (DS-代码审核 seq=16 / DS-测试 seq=17).
+
+    `writeOnly` alone does not prove "never echoed": the field is still reachable from a
+    response schema, so the guarantee moves to the runtime canary. If a future own-path
+    credential is registered without canary coverage, skipping it would be a silent blind
+    spot -> FAIL here.
+    """
+    ch = doc.get("x-credential-handling") or {}
+    own = ch.get("ownPathCredentialFields") or []
+    covered = ch.get("canaryCoveredFields") or []
+    problems = 0
+    if not own:
+        problems += fail("x-credential-handling.ownPathCredentialFields must list the own-path credential(s)")
+    for f in own:
+        if f not in covered:
+            problems += fail(f"own-path credential {f} has no canary coverage (add it to x-credential-handling.canaryCoveredFields)")
+    for f in covered:
+        if f not in own:
+            problems += fail(f"canaryCoveredFields lists {f} which is not an ownPathCredentialField (stale coverage)")
+    return problems
+
+
 def _find_schema_keys_with_prefix(node, prefix):
     hits = []
     if isinstance(node, dict):
@@ -958,6 +1029,7 @@ CHECKS = [
     check_502_scope,
     check_healthz_public,
     check_own_path_credential,
+    check_own_path_canary_coverage,
     check_schema_ui_channel,
     check_freeze,
 ]

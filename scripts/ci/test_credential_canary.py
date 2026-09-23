@@ -125,6 +125,12 @@ def run(base, headers, task, canary, failures):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selfcheck", action="store_true")
+    ap.add_argument(
+        "--expect-leak",
+        action="store_true",
+        help="reverse control: assert the canary IS detected (scrub disabled); "
+        "exit 0 only if a leak is found, 1 if the scanner silently passes",
+    )
     args = ap.parse_args()
     if args.selfcheck:
         return selfcheck()
@@ -143,6 +149,18 @@ def main():
         headers["X-CSRF-Token"] = os.environ["DM_CSRF_TOKEN"]
 
     failures = run(base, headers, task, canary, [])
+    leaks = [f for f in failures if f.startswith("LEAK")]
+    if args.expect_leak:
+        if leaks:
+            print(f"OK: reverse control detected {len(leaks)} leak channel(s) (scrub disabled)")
+            return 0
+        if failures:
+            print("FAIL: reverse control could not validate (no leak, and the run itself errored):")
+            for f in failures:
+                print(f"  - {f}")
+            return 1
+        print("FAIL: reverse control found NO leak with scrub disabled (silent blind spot)")
+        return 1
     if failures:
         print(f"FAIL: credential canary leaked ({len(failures)}):")
         for f in failures:

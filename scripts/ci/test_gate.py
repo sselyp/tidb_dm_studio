@@ -213,6 +213,13 @@ MUTATIONS += [
     ("x-freeze.version drifts from info.version", lambda d: d["x-freeze"].__setitem__("version", "0.0.0"), True),
 ]
 
+# D16 hardening (DS-代码审核 seq=16 / DS-测试 seq=17): a response-reachable writeOnly credential
+# may only skip the no-echo scan when it is registered as an own path AND canary-covered.
+MUTATIONS += [
+    ("response-reachable writeOnly credential without ownPath registration", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string", "writeOnly": True}), True),
+    ("ownPath credential loses canary coverage", lambda d: d["x-credential-handling"].__setitem__("canaryCoveredFields", []), True),
+]
+
 
 def assert_gate_manifest():
     """The manifest pins the mutation set so it cannot silently shrink.

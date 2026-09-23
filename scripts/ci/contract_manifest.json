@@ -1,5 +1,5 @@
 {
-  "version": "0.9.5",
+  "version": "0.9.6",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
   "actionTargetState": {
     "start": "running",
@@ -342,11 +342,12 @@
     "check_502_scope",
     "check_healthz_public",
     "check_own_path_credential",
+    "check_own_path_canary_coverage",
     "check_schema_ui_channel",
     "check_freeze"
   ],
   "mutations": {
-    "count": 77,
+    "count": 79,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -424,7 +425,9 @@
       "SchemaData.jsonSchema gains an x-ui-* hint (D11 UI leak)",
       "SchemaData loses formLayout (D11 UI channel removed)",
       "SchemaData.version stops tracking info.version",
-      "x-freeze.version drifts from info.version"
+      "x-freeze.version drifts from info.version",
+      "response-reachable writeOnly credential without ownPath registration",
+      "ownPath credential loses canary coverage"
     ]
   }
 }
