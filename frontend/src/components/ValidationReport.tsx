@@ -1,5 +1,5 @@
 import { Alert, List, Space, Tag, Typography } from "antd";
-import { fieldErrorLabel, groupErrors } from "../api/errorMessages";
+import { fieldErrorLabel, fieldPathLabel, groupErrors } from "../api/errorMessages";
 import type { FieldError, ValidationData } from "../api/types";
 
 function ErrorRow({ item }: { item: FieldError }) {
@@ -14,7 +14,7 @@ function ErrorRow({ item }: { item: FieldError }) {
       <Space direction="vertical" size={2} style={{ width: "100%" }}>
         <Space size={8} wrap>
           <Tag color={color}>{fieldErrorLabel(item.errorCode)}</Tag>
-          <Typography.Text code>{item.fieldPath || "/"}</Typography.Text>
+          <Typography.Text code>{fieldPathLabel(item.fieldPath)}</Typography.Text>
         </Space>
         <Typography.Text type="secondary">{item.message}</Typography.Text>
       </Space>

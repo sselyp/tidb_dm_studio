@@ -11,6 +11,7 @@ import {
 } from "../src/components/schemaUtils";
 import { buildTaskWrite, rawYamlForMode } from "../src/components/yamlMode";
 import { compatActions, resolveAllowedActions } from "../src/components/taskActions";
+import { fieldPathLabel } from "../src/api/errorMessages";
 import type { FormLayout, TaskConfig, UiField } from "../src/api/types";
 
 /**
@@ -101,6 +102,20 @@ describe("schema shape (frozen D11 P0 example)", () => {
       "session",
     ]);
     expect(resolveSchemaNode(root, "/targetDatabase/password")?.writeOnly).toBe(true);
+  });
+
+  it("name field is write-side only: no schema node (backend is the authority)", () => {
+    expect(resolveSchemaNode(root, "/name")).toBeUndefined();
+  });
+
+  it("server 422 on /name is labelled as the task name (not an opaque path)", () => {
+    expect(fieldPathLabel("/name")).toBe("任务名");
+  });
+
+  it("unknown fieldPath is preserved, empty falls back to root", () => {
+    expect(fieldPathLabel("/sources/0/sourceRef")).toBe("/sources/0/sourceRef");
+    expect(fieldPathLabel("")).toBe("/");
+    expect(fieldPathLabel(undefined)).toBe("/");
   });
 
   it("mydumpers item properties", () => {

@@ -27,6 +27,22 @@ export function fieldErrorLabel(code: FieldErrorCode): string {
   return FIELD_ERROR_LABELS[code] ?? code;
 }
 
+/**
+ * Friendly label for a `FieldError.fieldPath`. `/name` is the write-side pointer
+ * bound to top-level `TaskWrite.name`; it is deliberately absent from jsonSchema
+ * (D11 / monorepo ruling), so it gets a name here instead of an opaque path.
+ */
+const FIELD_PATH_LABELS: Record<string, string> = {
+  "/name": "任务名",
+};
+
+export function fieldPathLabel(path: string | undefined): string {
+  if (!path) {
+    return "/";
+  }
+  return FIELD_PATH_LABELS[path] ?? path;
+}
+
 const ENVELOPE_MESSAGES: Partial<Record<ErrorCodeName, string>> = {
   E_UNAUTHENTICATED: "登录已失效，请重新登录",
   E_INVALID_CREDENTIALS: "用户名或密码错误",

@@ -46,7 +46,13 @@ export default function SchemaForm({
     // ruling), so fall back to a synthetic string node for it.
     const node =
       resolveSchemaNode(root, pointer) ??
-      (pointer === "/name" ? ({ type: "string" } as JsonSchemaNode) : undefined);
+      (pointer === "/name"
+        ? ({
+            type: "string",
+            description:
+              "任务名称；唯一性与合法性由服务端校验（提交后以 422 返回该字段错误）",
+          } as JsonSchemaNode)
+        : undefined);
     if (!node) {
       return null;
     }
