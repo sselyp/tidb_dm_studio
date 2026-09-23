@@ -413,6 +413,18 @@ def check_source_instance_shapes(doc):
         problems += fail("manifest.schemaShapes must pin SourceInstance composite shapes")
     elif pinned != observed:
         problems += fail(f"SourceInstance shapes {observed} != manifest.schemaShapes {pinned}")
+
+    # TargetDatabase must mirror the frozen P0 example (form-schema.example.json).
+    tgt = schemas.get("TargetDatabase") or {}
+    tprops = tgt.get("properties") or {}
+    if tgt.get("additionalProperties") is not False:
+        problems += fail("TargetDatabase.additionalProperties must be false (frozen example)")
+    if list(tgt.get("required") or []) != ["host", "port", "user"]:
+        problems += fail("TargetDatabase.required must be [host, port, user]")
+    if (tprops.get("password") or {}).get("writeOnly") is not True:
+        problems += fail("TargetDatabase.password must be writeOnly")
+    if (tprops.get("session") or {}).get("additionalProperties", {}).get("type") != "string":
+        problems += fail("TargetDatabase.session must be map<string,string>")
     return problems
 
 
