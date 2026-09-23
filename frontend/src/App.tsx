@@ -1,14 +1,28 @@
-import { Layout, Typography } from "antd";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { App as AntApp } from "antd";
+import { BrowserRouter } from "react-router-dom";
+import { AuthProvider } from "./auth/AuthContext";
+import AppRoutes from "./app/router";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export default function App() {
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Layout.Content style={{ padding: 24 }}>
-        <Typography.Title level={3}>TiDB DM Studio</Typography.Title>
-        <Typography.Paragraph type="secondary">
-          MySQL → TiDB 的 DM 迁移可视化配置平台。骨架初始化中，功能按里程碑 P1/P2 推进。
-        </Typography.Paragraph>
-      </Layout.Content>
-    </Layout>
+    <QueryClientProvider client={queryClient}>
+      <AntApp>
+        <BrowserRouter>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </BrowserRouter>
+      </AntApp>
+    </QueryClientProvider>
   );
 }
