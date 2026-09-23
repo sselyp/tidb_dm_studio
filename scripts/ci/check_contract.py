@@ -436,6 +436,29 @@ def check_source_instance_shapes(doc):
     cfg = schemas.get("TaskConfig") or {}
     if list(cfg.get("required") or []) != ["sources"]:
         problems += fail("TaskConfig.required must be [sources] (example parity; taskMode optional)")
+
+    # OpenAPI <-> frozen P0 example parity (closes the doc-vs-schema blind spot).
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    example_path = os.path.join(root, "docs", "architecture", "form-schema.example.json")
+    try:
+        with open(example_path, encoding="utf-8") as f:
+            example = json.load(f)
+    except OSError:
+        return problems + fail("frozen example docs/architecture/form-schema.example.json missing")
+    if example.get("version") != doc["info"].get("version"):
+        problems += fail(
+            f"form-schema.example.json version {example.get('version')} != info.version {doc['info'].get('version')}"
+        )
+    ex_root = example.get("jsonSchema") or {}
+    if list(ex_root.get("required") or []) != list(cfg.get("required") or []):
+        problems += fail("example jsonSchema.required != TaskConfig.required")
+    ex_tgt = (ex_root.get("properties") or {}).get("targetDatabase") or {}
+    if ex_tgt and (
+        ex_tgt.get("additionalProperties") != tgt.get("additionalProperties")
+        or list(ex_tgt.get("required") or []) != list(tgt.get("required") or [])
+        or sorted((ex_tgt.get("properties") or {}).keys()) != sorted(tprops.keys())
+    ):
+        problems += fail("example targetDatabase shape != openapi TargetDatabase")
     return problems
 
 
