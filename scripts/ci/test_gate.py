@@ -202,6 +202,17 @@ MUTATIONS += [
     ("SourceInstance.password (direct; $ref'd from Task.sources)", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("password", {"type": "string"}), True),
 ]
 
+# AC-SEC (architect seq=85): own-path target credential input-only + D11 UI channel + freeze.
+MUTATIONS += [
+    ("TaskConfig.targetDatabase.password loses writeOnly (own-path echo)", lambda d: d["components"]["schemas"]["TargetDatabase"]["properties"]["password"].pop("writeOnly", None), True),
+    ("TaskConfig.targetDatabase removed (own-path input channel gone)", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].pop("targetDatabase", None), True),
+    ("ownPathCredentialFields drops the target password pin", lambda d: d["x-credential-handling"].__setitem__("ownPathCredentialFields", []), True),
+    ("SchemaData.jsonSchema gains an x-ui-* hint (D11 UI leak)", lambda d: d["components"]["schemas"]["SchemaData"]["properties"]["jsonSchema"].__setitem__("x-ui-widget", "select"), True),
+    ("SchemaData loses formLayout (D11 UI channel removed)", lambda d: d["components"]["schemas"]["SchemaData"]["properties"].pop("formLayout", None), True),
+    ("SchemaData.version stops tracking info.version", lambda d: d["components"]["schemas"]["SchemaData"]["properties"]["version"].__setitem__("description", "契约版本。"), True),
+    ("x-freeze.version drifts from info.version", lambda d: d["x-freeze"].__setitem__("version", "0.0.0"), True),
+]
+
 
 def assert_gate_manifest():
     """The manifest pins the mutation set so it cannot silently shrink.

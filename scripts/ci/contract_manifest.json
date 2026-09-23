@@ -1,5 +1,5 @@
 {
-  "version": "0.9.4",
+  "version": "0.9.5",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
   "actionTargetState": {
     "start": "running",
@@ -340,10 +340,13 @@
     "check_diagnostic_codes",
     "check_precheck_description",
     "check_502_scope",
-    "check_healthz_public"
+    "check_healthz_public",
+    "check_own_path_credential",
+    "check_schema_ui_channel",
+    "check_freeze"
   ],
   "mutations": {
-    "count": 70,
+    "count": 77,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -414,7 +417,14 @@
       "DataSourceWrite.password loses writeOnly (echoable input)",
       "TaskConfig.password (direct; $ref'd from Task.config)",
       "TaskConfig.targetDatabase.password (nested; our own path)",
-      "SourceInstance.password (direct; $ref'd from Task.sources)"
+      "SourceInstance.password (direct; $ref'd from Task.sources)",
+      "TaskConfig.targetDatabase.password loses writeOnly (own-path echo)",
+      "TaskConfig.targetDatabase removed (own-path input channel gone)",
+      "ownPathCredentialFields drops the target password pin",
+      "SchemaData.jsonSchema gains an x-ui-* hint (D11 UI leak)",
+      "SchemaData loses formLayout (D11 UI channel removed)",
+      "SchemaData.version stops tracking info.version",
+      "x-freeze.version drifts from info.version"
     ]
   }
 }
