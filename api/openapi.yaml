@@ -804,8 +804,8 @@ components:
         下游 TiDB 目标库（对齐 DM task.yaml 的 target-database，映射见 dm-v7.1.6-field-mapping.md §2）。
         `password` 为纯写入通道（writeOnly: true）：请求可出现，任何读取模型（Task.config 读回、
         /tasks/{name}/yaml 导出、日志/审计）一律不得回显（D16 自有路径）。
-        形状与冻结 P0 示例 `form-schema.example.json` 一致；`security`(TLS) 等版本相关字段暂为
-        YAML-only，待 P3 校准后再上表单。
+        形状与冻结 P0 示例 `form-schema.example.json` 两端一致：`required:[host,port,user]`、
+        `additionalProperties:false`、`session` 为 `map<string,string>`；`security`(TLS) 保留为可选。
       type: object
       additionalProperties: false
       required: [host, port, user]
@@ -814,6 +814,7 @@ components:
         port: { type: integer, minimum: 1, maximum: 65535 }
         user: { type: string }
         password: { type: string, writeOnly: true }
+        security: { type: object, additionalProperties: true }
         session: { type: object, additionalProperties: { type: string } }
     Task:
       type: object

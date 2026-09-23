@@ -1,12 +1,12 @@
 {
-  "version": "0.9.0",
+  "version": "0.9.5",
   "jsonSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://github.com/sselyp/tidb_dm_studio/schemas/task-config.json",
     "title": "TaskConfig",
     "type": "object",
     "additionalProperties": true,
-    "required": ["taskMode", "sources"],
+    "required": ["sources"],
     "properties": {
       "taskMode": { "type": "string", "enum": ["all", "full", "incremental"], "default": "all" },
       "caseSensitive": { "type": "boolean", "default": false },
@@ -21,6 +21,7 @@
           "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "user": { "type": "string" },
           "password": { "type": "string", "writeOnly": true },
+          "security": { "type": "object", "additionalProperties": true },
           "session": { "type": "object", "additionalProperties": { "type": "string" } }
         }
       },
