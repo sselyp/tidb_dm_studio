@@ -1,9 +1,11 @@
 openapi: 3.1.0
 info:
   title: TiDB DM 可视化平台 API
-  version: 0.9.4
+  version: 0.9.5
   description: |
-    后端接口契约 v0.9.4（对齐 DM v7.1.6，见 x-dm-compat）。
+    后端接口契约 v0.9.5（对齐 DM v7.1.6，见 x-dm-compat；接口形状冻结见 x-freeze）。
+    schema 双通道（D11）：`jsonSchema` 为纯标准 JSON Schema 2020-12（属性内无任何 `x-ui-*`），
+    全部 UI 元数据在 `formLayout`（`ui` 以 JSON Pointer 为键 + `steps[].groups[].fields[]`）。
     cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
     状态码为权威；code=0 仅表示请求已处理；错误统一 data.errors；字段错误码见 x-field-error-codes。
     诊断端点（/task-validate、/task-precheck 各 level、/datasources/test）body 可解析为对象即恒 200 + data.valid；非 JSON/非对象 → 400。
@@ -680,12 +682,24 @@ components:
           type: array
           items: { $ref: "#/components/schemas/FieldError" }
     SchemaData:
+      description: >-
+        GET /task-schema 返回。双通道（D11）：`jsonSchema` 为纯标准 JSON Schema 2020-12，
+        属性内不得内嵌任何 `x-ui-*` 渲染提示；UI 元数据全在 `formLayout`
+        （`ui` 以 JSON Pointer 为键 + `steps[].groups[].fields[]` 指向 jsonSchema 路径）。
+        交付物见 docs/architecture/form-schema.example.json。
       type: object
+      required: [version, jsonSchema, formLayout]
       properties:
-        version: { type: string }
+        version:
+          type: string
+          description: 跟随 info.version（唯一真源，勿硬编码分支）。
         mode: { type: string }
-        jsonSchema: { type: object }
-        formLayout: { type: object }
+        jsonSchema:
+          type: object
+          description: 纯标准 JSON Schema 2020-12；属性内无任何 `x-ui-*`（UI 一律走 formLayout）。
+        formLayout:
+          type: object
+          description: UI 通道：`ui`（JSON Pointer 键）+ `steps[].groups[].fields[]`；非标准 JSON Schema 扩展。
     TaskStatusData:
       type: object
       required: [allowedActions]
@@ -785,6 +799,20 @@ components:
         binlogName: { type: [string, "null"] }
         binlogPos: { type: [integer, "null"] }
         binlogGtid: { type: [string, "null"] }
+    TargetDatabase:
+      description: >-
+        下游 TiDB 目标库（对齐 DM task.yaml 的 target-database，映射见 dm-v7.1.6-field-mapping.md §2）。
+        `password` 为纯写入通道（writeOnly: true）：请求可出现，任何读取模型（Task.config 读回、
+        /tasks/{name}/yaml 导出、日志/审计）一律不得回显（D16 自有路径）。
+      type: object
+      additionalProperties: true
+      properties:
+        host: { type: string }
+        port: { type: integer }
+        user: { type: string }
+        password: { type: string, writeOnly: true }
+        security: { type: object, additionalProperties: true }
+        session: { type: object, additionalProperties: true }
     Task:
       type: object
       properties:
@@ -810,6 +838,7 @@ components:
       additionalProperties: true
       properties:
         taskMode: { type: string, enum: [all, full, incremental] }
+        targetDatabase: { $ref: "#/components/schemas/TargetDatabase" }
         ignoreCheckItems:
           description: >-
             需跳过的预检项名（对齐 DM Task.ignore_checking_items）。取值集合见
@@ -916,16 +945,25 @@ x-config-storage:
     保存即物化展开：写入时把全局默认与 source 级 override 合并为每个 source 的
     有效配置后落库；读取接口恒返回合并后的有效 per-source 配置，前端不做隐式合并。
     config hash（下发去重/幂等/审计 beforeHash）对落库的展开内容计算，语义等价的两套写法 hash 一致。
+x-freeze:
+  version: 0.9.5
+  scope: 接口形状（paths/schemas/错误码/状态机/凭据处理/D11 双通道）冻结；只允许增量可选字段，不得改已冻结形状。
+  deferred:
+    - "DM 版本相关可选字段（online-ddl / validators 等，见 task-config-schema.md §7）增量上图，不改形状"
+    - "form-schema.example.json 字段级覆盖度随 DM 版本校准"
+  decidedBy: cc-开发架构师dm（D11 独立 UI 通道定稿）
 x-credential-handling:
   redline: D16
   rule: >-
     凭据零回显：代理层剥离/掩码 DM 原生响应中的一切上游口令，响应与日志一律不得出现。
     请求体中的口令字段仅作写入通道（writeOnly: true），任何读取模型不得回显。
+    自有落库路径同样适用：TaskConfig.targetDatabase.password 仅写入，读回/导出/日志零回显。
   stripFromUpstreamResponses:
     - "target_config.password（DM v7.1.6 GET /api/v1/tasks 明文返回，代理必须先剥离）"
     - "source 口令（DM /api/v1/sources 即便掩码，也不得透传）"
   neverInResponses: [password, passwd, target_config.password]
-  writeOnlyRequestFields: [LoginRequest.password, PasswordChangeRequest.oldPassword, PasswordChangeRequest.newPassword, DataSourceWrite.password]
+  writeOnlyRequestFields: [LoginRequest.password, PasswordChangeRequest.oldPassword, PasswordChangeRequest.newPassword, DataSourceWrite.password, TaskConfig.targetDatabase.password]
+  ownPathCredentialFields: [TaskConfig.targetDatabase.password]
 x-dm-compat:
   dmVersion: 7.1.6
   downstreamTiDB: 7.1.9
