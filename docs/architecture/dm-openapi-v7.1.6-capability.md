@@ -86,7 +86,7 @@
 
 | 我们的状态字段 | DM 来源 |
 |---|---|
-| `stage` | `SubTaskStatus.stage`（Stopped/Running/Finished；**无 Paused**） |
+| `stage` | `SubTaskStatus.stage`（Stopped/Running/Finished；**无 Paused**）——DM OpenAPI schema **无 `enum`**（纯 string），故 `dmEnum` 为**运行时/mdctl 断言项**，非 schema 保证（D17 不得写成"schema 已保证"） |
 | `lag` | `SubTaskStatus.sync_status.seconds_behind_master` |
 | `progress` | dump：`completed_tables/total_tables`；load：`finished_bytes/total_bytes`；sync：`synced` |
 | 分片 DDL 冲突 | `sync_status.unresolved_groups[]`（`ShardingGroup{target, ddl_list, synced, unsynced}`）→ PRECHECK |
@@ -95,5 +95,5 @@
 ## 6. 可达性与复现
 
 - dm-master `10.168.2.241:8261`：agent 侧本机可达（本轮实测 200）。
-- TiDB `192.168.2.241:4000`：agent 侧不可达（TCP 失败）；对外统一 `10.168.2.241:4000`。
+- TiDB `10.168.2.241:4000`：对外统一地址（agent 侧可达）；宿主内 `192.168.2.241` 对 dev/proxy 不可达，不得写入文档/配置。
 - 复现：`GET /api/v1/dm.json` 取 spec；`GET /api/v1/tasks`、`/tasks/{name}` 核对 §4 路径。
