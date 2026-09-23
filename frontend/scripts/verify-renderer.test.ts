@@ -37,7 +37,7 @@ const layoutOf = (fields: string[], uiKeys: string[] = []) => ({
 
 describe("schema shape (frozen D11 P0 example)", () => {
   it("top-level required excludes name", () => {
-    expect(root.required).toEqual(["taskMode", "sources"]);
+    expect(root.required).toEqual(["sources"]);
   });
 
   it("/name absent from jsonSchema (SchemaForm special-cases it)", () => {
@@ -97,6 +97,7 @@ describe("schema shape (frozen D11 P0 example)", () => {
       "port",
       "user",
       "password",
+      "security",
       "session",
     ]);
     expect(resolveSchemaNode(root, "/targetDatabase/password")?.writeOnly).toBe(true);
