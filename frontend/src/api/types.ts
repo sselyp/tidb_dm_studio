@@ -118,9 +118,21 @@ export interface SourceInstance {
 
 export type TaskMode = "all" | "full" | "incremental";
 
+/** Frozen `TargetDatabase` (openapi v0.9.5, D16 own-path). `password` is a write-only channel. */
+export interface TargetDatabase {
+  host: string;
+  port: number;
+  user: string;
+  /** writeOnly (D16): may appear in writes, but read models / yaml export / logs must never echo it. */
+  password?: string;
+  session?: Record<string, string>;
+}
+
 export interface TaskConfig {
   taskMode?: TaskMode;
   sources: SourceInstance[];
+  /** Downstream TiDB target; `password` write-only (D16 own-path, v0.9.5). */
+  targetDatabase?: TargetDatabase;
   [key: string]: unknown;
 }
 
