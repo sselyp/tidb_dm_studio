@@ -76,7 +76,7 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 
 ## 7. 待补充
 
-- [x] DM 版本与 dm-master/dm-worker 拓扑：v7.1.6 dm-master OpenAPI（31 paths / 53 schemas），3 worker bound；能力缺口与兜底见 §11 与 `docs/architecture/dm-openapi-v7.1.6-capability.md`
+- [x] DM 版本与 dm-master/dm-worker 拓扑：v7.1.6 dm-master OpenAPI（31 paths / 60 schemas），3 worker bound；能力缺口与兜底见 §11 与 `docs/architecture/dm-openapi-v7.1.6-capability.md`
 - [~] 全参数 JSON Schema 与字段清单（结构已冻结，见 D11 + `task-config-schema.md`；版本相关字段 `online-ddl`/`validators` 待 DM 版本校准）
 - [ ] 页面契约（向导步骤、监控页字段）
 - [ ] 依赖清单与 License 合规（@DS-代码审核）
@@ -139,11 +139,15 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 ### 10.2 凭据零回显（D16，红线）
 - 事实：DM v7.1.6 `GET /api/v1/tasks` 明文返回 `target_config.password`；`/api/v1/sources` 掩码。
 - 要求：后端代理对**所有** DM 原生响应做剥离/掩码，任何 `/tasks*`、`/sources*` 响应与日志**不得**含上下游口令。
+- **自有落库路径同口径**：`config.targetDatabase.password` 属**我方**落库/序列化路径（不在 DM 侧），读回任务时同样**不得回显**（键不存在，或值 `******`/空）。
 - 验证：`check_contract.py` 增反向断言（响应 schema 不得暴露 password 字段）+ 契约测试对 `/tasks` 响应做「无口令」断言；AC-SEC 增「经后端 `/tasks` 响应不得出现目标库口令」。
+- **金丝雀断言**：写入唯一口令后，遍历 `/api/tasks`、`/tasks/{name}`、`/tasks/{name}/status`、`/tasks/{name}/yaml` 及任一 4xx/5xx 错误体与服务端日志，断言**均不含金丝雀子串**。
+- **字符串 blob 通道（D16-A，红线）**：读模型**不得**暴露 `rawYaml`（或任何承载原始 `task.yaml` 文本）的响应字段——字符串内容无法用 schema 校验，内联 `target_config.password` 会从键名扫描与运行期 `scrub()` 双双漏过。因此：`rawYaml` 仅作**写通道**（`TaskYamlWrite`/`TaskYamlUpdate`，`writeOnly:true`，入 `writeOnlyRequestFields`）；`/tasks/{name}/yaml` **由结构化 `config` 渲染**（password 因 `writeOnly` 省略）；运行期 rawYaml 只作写入口，解析后凭据进 `SecretProvider`、**不持久化原串**、日志/审计不记；若响应将出现原始文档串则 **fail-closed**。
+- **门禁**：`check_contract.py` 登记 `x-credential-handling.stringBlobResponseForbidden`，**响应可达的字符串 blob 字段一律 FAIL**，并加 must-FAIL 变异「rawYaml 内联口令」；回归加结构断言「`Task` 无 `rawYaml`」+ 字符串内容扫描（`password:`/`passwd:` + 已知口令）。
 
 ## 11. DM OpenAPI v7.1.6 能力映射与缺口兜底（D17）
 
-> 取证：@ds-代码审核 本机直连 `10.168.2.241:8261` 实测（31 paths / 53 schemas）；详细矩阵见 `docs/architecture/dm-openapi-v7.1.6-capability.md`。
+> 取证：@ds-代码审核 本机直连 `10.168.2.241:8261` 实测（31 paths / 60 schemas）；详细矩阵见 `docs/architecture/dm-openapi-v7.1.6-capability.md`。
 
 ### 11.1 可直接代理（OpenAPI 原生）
 - tasks/sources CRUD、source enable/disable/relay、`GET /tasks/{name}/status`（每 source 一条 SubTaskStatus：`stage`、`dump|load|sync_status`、`seconds_behind_master`、`synced`、`unresolved_groups`）、`.../sources/{s}/schemas/...`（库表浏览）、`.../migrate_targets`（route-rules 预览）、`/cluster/masters|workers`（健康）。

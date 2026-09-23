@@ -151,7 +151,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | `/validators` | array-table | `{global,mode,...}` | 版本相关待校准 |
 | `/exprFilter` | code-yaml | | 透传 |
 | `/relayDir` | input | | |
-| `/ignoreCheckItems` | multi-select | `string[]` | 跳过预检项（对齐 DM `ignore_checking_items`）；候选由服务端注入（`x-dm-compat.precheck.ignoreItemIds`），允许自定义 |
+| `/ignoreCheckItems` | multi-select | `string[]` | 跳过预检项（对齐 DM `ignore_checking_items`）；候选由服务端注入（`x-dm-compat.precheck.ignoreItemIds`），**闭集、不支持自由输入**，服务端校验取值 |
 | `/collationCompatible` | select | | 版本相关待校准 |
 
 > 其余 `task.yaml` 字段以 `additionalProperties:true` 保 round-trip：未上表单的键经 `code-yaml`（YAML 双视图）可见/可改，**不丢**。
@@ -177,6 +177,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 | 数组内 unique 键重复（如 `/routes[*].name`、`/filters[*].name`） | `UNIQUE` | `E_FIELD_DUPLICATE` |
 | 引用对象不存在（`/sources[*].sourceRef`、`/sources/*/filters[j]`、`/sources/*/routeRules[j]`） | `EXISTENCE` | `E_FIELD_EXISTENCE` |
 
+- **唯一性归属**：`RouteRule.name`、`Filter.name` 等**数组内重名** → `E_FIELD_DUPLICATE`（`UNIQUE`，`fieldPath` 指向 `/routes/<i>/name`、`/filters/<i>/name`）；**任务名/目标表名全局唯一**（跨任务冲突）属预检，走 `PRECHECK_TASK_NAME_DUP`，**不**用 `E_FIELD_DUPLICATE`。
 - 信封码恒为 `42201 E_VALIDATION_FAILED`（HTTP 422）；字段细节只在 `data.errors[]`。
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
