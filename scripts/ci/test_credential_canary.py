@@ -13,9 +13,11 @@ CI stays green. ``--selfcheck`` exercises the scanner offline (no service needed
 
 Usage:
   python scripts/ci/test_credential_canary.py --selfcheck
-  $env:DM_BASE_URL="http://<dm-proxy-host>:8080/api"; $env:DM_SESSION_COOKIE="dm_session=...";
-  $env:DM_CSRF_TOKEN="..."; $env:DM_TASK_NAME="canary-sec";
-  $env:DM_LOG_FILES="C:\\logs\\app.log";
+  export DM_BASE_URL=http://<dm-proxy-host>:8080/api
+  export DM_SESSION_COOKIE=<dm_session-cookie>
+  export DM_CSRF_TOKEN=<csrf-token>
+  export DM_TASK_NAME=<task-name>
+  export DM_LOG_FILES=<path-to-app.log>
   python scripts/ci/test_credential_canary.py
 
 Exit non-zero on any leak (or a write that did not apply), 0 otherwise.

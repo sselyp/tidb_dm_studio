@@ -44,6 +44,8 @@ jobs:
           else
             echo "test_credential_canary.py not present yet, skipping"
           fi
+      - name: Install ripgrep (hardcode gate dependency; ubuntu runners lack rg)
+        run: sudo apt-get update -qq && sudo apt-get install -y ripgrep
       - name: No hardcoded addresses / credentials
         run: |
           if [ -f scripts/ci/check_no_hardcoded.sh ]; then
@@ -70,7 +72,7 @@ jobs:
       - run: go test -tags canary ./...
 
   # Live credential-canary gate (AC-SEC). Required wherever a dm-master is reachable:
-  # set repo variable DM_MASTER_ADDRS (e.g. http://10.168.2.241:8261) to run the positive
+  # set repo variable DM_MASTER_ADDRS (e.g. http://<dm-master-host>:8261) to run the positive
   # control (scrub on -> exit 0) and the reverse control (scrub off -> must exit 0 via
   # --expect-leak). Skipped otherwise so contract-only CI stays green.
   canary-live:
