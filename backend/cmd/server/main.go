@@ -2,8 +2,9 @@
 //
 // Scope: enough surface for the credential canary (AC-SEC-01..04) to run against
 // a live dm-master: read /api/tasks*, write a task config, and never echo a
-// credential (own-path or DM passthrough). It is NOT the full platform proxy
-// (auth/CSRF/state machine/validation/precheck are still pending).
+// credential (own-path or DM passthrough). P1 adds the controlled egress
+// diagnostic POST /api/datasources/test (see datasource.go). The remaining P1
+// surface (auth/CSRF/state machine/full validation) is still pending.
 //
 // Env:
 //   DM_WEB_LISTEN       listen address            (default 0.0.0.0:8080)
@@ -199,6 +200,7 @@ func handleTasks(w http.ResponseWriter, r *http.Request, rest string) {
 			fail(w, http.StatusUnprocessableEntity, 42201, "E_VALIDATION_FAILED")
 			return
 		}
+		bindTargetSchema(v)
 		mu.Lock()
 		store[name] = v
 		mu.Unlock()
@@ -304,6 +306,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if p == "/api/tasks" || strings.HasPrefix(p, "/api/tasks/") {
 		handleTasks(w, r, strings.TrimPrefix(p, "/api"))
+		return
+	}
+	if p == "/api/datasources/test" {
+		handleDataSourceTest(w, r)
 		return
 	}
 	fail(w, http.StatusNotFound, 40401, "E_NOT_FOUND")
