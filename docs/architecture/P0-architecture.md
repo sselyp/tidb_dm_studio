@@ -152,6 +152,7 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 ### 11.1 可直接代理（OpenAPI 原生）
 - tasks/sources CRUD、source enable/disable/relay、`GET /tasks/{name}/status`（每 source 一条 SubTaskStatus：`stage`、`dump|load|sync_status`、`seconds_behind_master`、`synced`、`unresolved_groups`）、`.../sources/{s}/schemas/...`（库表浏览）、`.../migrate_targets`（route-rules 预览）、`/cluster/masters|workers`（健康）。
 - 请求体字段：`StartTaskRequest{remove_meta, safe_mode_time_duration, source_name_list, start_time}`、`StopTaskRequest{source_name_list, timeout_duration}`；`Task` 含 `ignore_checking_items`、`on_duplicate`、`shard_mode`。
+- 响应形状：`POST /tasks`→**201 `OperateTaskResponse`**（非 Task）；`POST /tasks/templates/import`→**202**（异步）；`DELETE /tasks|sources/{name}`→**204**、失败 **400**（DM 仅 GET source/task 文档化 404）。`GET /tasks` 支持 `with_status`/`stage`/`source_name_list` 过滤（代理须透传）。
 
 ### 11.2 缺口 → 兜底（必须按此实现）
 | 产品能力 | DM v7.1.6 OpenAPI | 兜底 |
@@ -168,4 +169,11 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 - `unresolved_groups` → 分片 DDL 冲突，进 `PRECHECK_*` 告警（D8）。
 
 ### 11.4 安全（承 D16）
-- 代理对 task 响应**白名单化**：剔除/置空 `target_config.password` 及一切 `*password*` 键，**不入日志/审计原文**；`/tasks/{name}/yaml` 同口径。列为后端合入门禁。
+- 代理对 task/source 响应**白名单化**：DM 在 **GET 时隐藏整块 `security`**（三字段 `required`，含 `*_content`）——故剔除/置空范围从 `password` **扩到 `security.*`**（含一切 `*password*`、`*_content` 键）；source 与 task 的 GET 响应一律抹 `security` 整对象。**不入日志/审计原文**；`/tasks/{name}/yaml` 同口径。列为后端合入门禁。
+
+### 11.5 POC 目标口径（2026-09-24 定，@ds-测试 取证）
+- 目标地址：**`10.168.2.241:4000`**（现网同口径）；`192.168.2.241` 仅宿主内可达，**不得**写入文档/配置。
+- 目标账号：**`dm_verify`（最小权限）**，授权仅 `dm_meta.*` / `shop.*` / `shop_merged.*`（DDL/DML，无 SUPER/GRANT）；**不落 root**。超范围库须**扩授 dm_verify**。
+- 目标库映射（选项 **B**，零改授权）：single→`shop`，shards→`shop_merged`。
+- 凭据外置：`/data/dm-mysql/tidb-target.env`（0600、4 键、**不入仓**、未回显）；后端读该文件做连通预检。
+- 后续：POC 结束轮换 `root`@`%`（口令已外泄）。
