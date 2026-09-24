@@ -1220,10 +1220,19 @@ def check_check_functions(doc):
 
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "api/openapi.yaml"
-    with open(path, encoding="utf-8") as fh:
-        doc = yaml.safe_load(fh)
-    problems = sum(fn(doc) for fn in CHECKS)
-    problems += check_check_functions(doc)
+    # S1 (architect seq=38): exit-code contract 0=PASS / 1=CONTRACT_VIOLATION /
+    # 2=HARNESS_ERROR. `fail()` returns 1 for a real contract violation; an unexpected
+    # exception (missing schema, malformed doc, infra error) is NOT a violation and must
+    # be distinguishable, so the meta-gate can fail closed instead of counting a crash as
+    # "caught". A traceback therefore exits 2, never 1.
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        problems = sum(fn(doc) for fn in CHECKS)
+        problems += check_check_functions(doc)
+    except Exception as e:  # noqa: BLE001 - deliberate fail-closed harness boundary
+        print(f"HARNESS ERROR: {type(e).__name__}: {e}")
+        return 2
     if problems:
         print(f"{problems} problem(s) found")
         return 1
