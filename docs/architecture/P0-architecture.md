@@ -172,15 +172,18 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 | 产品能力 | DM v7.1.6 OpenAPI | 兜底 |
 |---|---|---|
 | `pause` / `resume` | **无**（仅 `POST /tasks/{name}/start` `/stop`；`TaskStage` enum `[Stopped,Running,Finished]` 无 `Paused`） | 后端封装 **dmctl `pause-task` / `resume-task`**；`desiredState:paused` 仅由后端状态机产生，**不**从 DM stage 反推 |
-| `check-task` 预检 | **无端点** | 后端封装 **dmctl `check-task`**；`OperateTaskResponse.check_result` 仅作 start/stop 附带的补充，**不替代** `/task-precheck` |
+| `check-task` 预检 | **无端点** | 后端封装 **dmctl `check-task`**；原生 YAML **必须由 `POST /api/v1/tasks/converters` 生成**（OpenAPI Task JSON→`task_config_file`），**禁止手写原生渲染器**（map/seq、`mysql-instances` vs `source-config` 偏差，2026-09-24校准）；`OperateTaskResponse.check_result` 仅作 start/stop 附带补充，**不替代** `/task-precheck` |
 | 任务日志 | **无端点** | 后端自实现（worker 日志/落库）；不得透传原生 |
-| YAML 导出 | **无端点**（仅 `POST /tasks/converters` 可转换） | 后端基于**落库 config 渲染**，导出前**脱敏**（D16）；`/tasks/{name}/yaml` 同口径 |
+| YAML 导出 | **无端点**（仅 `POST /tasks/converters` 可转换） | 后端以**落库 config → `converters`** 渲染，导出前**脱敏**（D16）；`/tasks/{name}/yaml` 同口径 |
 | 版本探测 | `dm.json` 自称 `info.version=6.0.0`（与二进制 7.1.6 不符）；`/cluster/info` 只回 cluster_id | 以 **dmctl / 二进制 / 配置**为准；契约 `x-dm-compat` 记录已校准 v7.1.6 |
+| `Task` JSON 形状 | OpenAPI schema 强校验：`POST/PUT /tasks` 缺 `required`（`on_duplicate`、`enhance_online_schema_change`）即 **400** | `toDMOpenAPITask` 输出**必须过 `POST /tasks/converters` 校验**（合入必跑门禁）；补 `on_duplicate`(缺省 `error`)、`enhance_online_schema_change`(缺省 `false`)；**删**非 schema 键 `case_sensitive`/`block_allow_list`；`routes`→`table_migrate_rule[]`、`filters`→`binlog_filter_rule`(map: name→rule) |
+| dmctl 结果判定 | `pause/resume/check-task` 失败仍 **exit=0**（仅 JSON `result:false`+`msg`）；仅客户端错误（缺文件）exit≠0 | 后端**必须解析 JSON `result`/`msg`** 判成败，**禁止只看退出码**（否则 D14/D15 误置 `paused/stopped`，红线级）；`DMCTL_BIN` **钉 v7.1.6 绝对路径**（宿主 `tiup dmctl` 默认 v8.5.8，禁用） |
 
 ### 11.3 监控字段映射（喂状态/延迟/阶段与 PRECHECK）
 - `stage`（+ 契约 `nativeState`）→ 阶段展示与 §9 状态消歧输入；
 - `seconds_behind_master` → 延迟指标；
-- `unresolved_groups` → 分片 DDL 冲突，进 `PRECHECK_*` 告警（D8）。
+- `unresolved_groups` → 分片 DDL 冲突，进 `PRECHECK_*` 告警（D8）；**来源取 `GET /tasks/{name}/status.sync_status.unresolved_groups`**（check-task 输出未必含）。
+- **PRECHECK 映射按 `code=NNNNN`**（`20003/20031/10001/26001/26003…`）**弃关键字匹配**（decode 串含 "router" 会误命中 `PRECHECK_ROUTE_OVERLAP`，2026-09-24 校准）。
 
 ### 11.4 安全（承 D16）
 - 代理对 task/source 响应**白名单化**：DM 在 **GET 时隐藏整块 `security`**（三字段 `required`，含 `*_content`）——故剔除/置空范围从 `password` **扩到 `security.*`**（含一切 `*password*`、`*_content` 键）；source 与 task 的 GET 响应一律抹 `security` 整对象。**不入日志/审计原文**；`/tasks/{name}/yaml` 同口径。列为后端合入门禁。
