@@ -1,5 +1,5 @@
 {
-  "version": "0.9.7",
+  "version": "0.9.8",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
   "actionTargetState": {
     "start": "running",
@@ -329,8 +329,9 @@
     "check_source_instance_shapes",
     "check_frozen_example_parity",
     "check_allowed_actions",
-    "check_no_credential_echo",
-    "check_manifest",
+      "check_no_credential_echo",
+      "check_string_blob_channel",
+      "check_manifest",
     "check_write_mutex_codes",
     "check_ifmatch_binding",
     "check_precondition_etag",
@@ -348,7 +349,7 @@
     "check_freeze"
   ],
   "mutations": {
-    "count": 92,
+    "count": 95,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -441,6 +442,9 @@
       "response model ValidationData exposes password (structural scan; F1 probe)",
       "benign: password policy fields are not credentials",
       "benign: token ttl is not a credential",
+      "re-introduce Task.rawYaml (string-blob response channel)",
+      "TaskYamlWrite.rawYaml loses writeOnly (blob input no longer input-only)",
+      "stringBlobResponseForbidden rule dropped",
       "example.version drifts from info.version (frozen doc ground truth)"
     ]
   }

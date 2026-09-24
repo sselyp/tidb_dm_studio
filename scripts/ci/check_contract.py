@@ -1096,6 +1096,70 @@ def check_own_path_canary_coverage(doc):
     return problems
 
 
+def _deref_schema(node, schemas):
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            return schemas.get(ref.rsplit("/", 1)[-1], node)
+    return node
+
+
+def _fieldpath_target(path, schemas):
+    """Resolve a dotted `<Model>.<prop>[.<prop>...]` path to (containing_schema, last_prop)."""
+    parts = str(path).split(".")
+    if len(parts) < 2:
+        return None, None
+    node = schemas.get(parts[0])
+    if not isinstance(node, dict):
+        return None, None
+    for seg in parts[1:-1]:
+        node = _deref_schema((node.get("properties") or {}).get(seg), schemas)
+        if not isinstance(node, dict):
+            return None, None
+    return node, parts[-1]
+
+
+def check_string_blob_channel(doc):
+    """D16-A redline (architect seq=8 / P0-architecture.md D16-A): a stored raw/opaque string
+    blob carrying task.yaml text must never be a response-reachable field.
+
+    A credential embedded in a free string is invisible to the name-based scan
+    (`_credential_hits`) and to runtime `scrub()` (which returns strings unchanged), so
+    `Task.rawYaml` must not be readable. This check (1) requires the registration to exist
+    and stay non-empty (the rule cannot be silently dropped), (2) fails if a registered blob
+    is still present on a read model, and (3) requires every `writeOnlyRequestFields` entry
+    to actually be `writeOnly:true` (rawYaml is an input-only channel).
+    """
+    problems = 0
+    schemas = doc["components"]["schemas"]
+    ch = doc.get("x-credential-handling") or {}
+    forbidden = ch.get("stringBlobResponseForbidden")
+    if not isinstance(forbidden, list) or not forbidden:
+        problems += fail(
+            "x-credential-handling.stringBlobResponseForbidden must register forbidden "
+            "string-blob response fields"
+        )
+    for path in forbidden or []:
+        model, prop = _fieldpath_target(path, schemas)
+        if isinstance(model, dict) and prop and prop in (model.get("properties") or {}):
+            problems += fail(
+                f"string-blob {path} is response-reachable "
+                f"(D16-A: raw blob response channels forbidden)"
+            )
+    for path in ch.get("writeOnlyRequestFields") or []:
+        model, prop = _fieldpath_target(path, schemas)
+        if not isinstance(model, dict) or not prop:
+            problems += fail(f"writeOnlyRequestFields entry {path} does not resolve")
+            continue
+        field = _deref_schema((model.get("properties") or {}).get(prop), schemas)
+        if not (isinstance(field, dict) and field.get("writeOnly") is True):
+            problems += fail(
+                f"writeOnlyRequestFields entry {path} must set writeOnly:true "
+                f"(D16-A write-only channel)"
+            )
+    return problems
+
+
 def _find_schema_keys_with_prefix(node, prefix):
     hits = []
     if isinstance(node, dict):
@@ -1172,6 +1236,7 @@ CHECKS = [
     check_frozen_example_parity,
     check_allowed_actions,
     check_no_credential_echo,
+    check_string_blob_channel,
     check_manifest,
     check_write_mutex_codes,
     check_ifmatch_binding,

@@ -239,6 +239,9 @@ EXPECT_SUBSTR = {
     "TargetDatabase.additionalProperties flips vs example": "TargetDatabase.additionalProperties must be true",
     "TargetDatabase.security dropped (example keeps it)": "TargetDatabase.properties must be [host,port,user,password,security,session]",
     "example.version drifts from info.version (frozen doc ground truth)": "form-schema.example.json version",
+    "re-introduce Task.rawYaml (string-blob response channel)": "string-blob Task.rawYaml is response-reachable",
+    "TaskYamlWrite.rawYaml loses writeOnly (blob input no longer input-only)": "writeOnlyRequestFields entry TaskYamlWrite.rawYaml must set writeOnly:true",
+    "stringBlobResponseForbidden rule dropped": "stringBlobResponseForbidden must register forbidden",
 }# D16 hardening (DS-代码审核 seq=16 / DS-测试 seq=17): a response-reachable writeOnly credential
 # may only skip the no-echo scan when it is registered as an own path AND canary-covered.
 MUTATIONS += [
@@ -263,6 +266,16 @@ MUTATIONS += [
     ("response model ValidationData exposes password (structural scan; F1 probe)", lambda d: d["components"]["schemas"]["ValidationData"]["properties"].__setitem__("password", {"type": "string"}), True),
     ("benign: password policy fields are not credentials", lambda d: d["components"]["schemas"]["Task"]["properties"].update({"passwordPolicy": {"type": "string"}, "passwordMinLength": {"type": "integer"}}), False),
     ("benign: token ttl is not a credential", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("tokenTtl", {"type": "integer"}), False),
+]
+
+# D16-A (architect seq=8 / P0-architecture.md D16-A): a stored string blob carrying task.yaml
+# text (rawYaml) must never be a response channel; it is input-only and registered in
+# stringBlobResponseForbidden. A credential inside a free string is invisible to the
+# name-based scan, so this rule is the only guard for that channel.
+MUTATIONS += [
+    ("re-introduce Task.rawYaml (string-blob response channel)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("rawYaml", {"type": "string"}), True),
+    ("TaskYamlWrite.rawYaml loses writeOnly (blob input no longer input-only)", lambda d: d["components"]["schemas"]["TaskYamlWrite"]["properties"]["rawYaml"].pop("writeOnly", None), True),
+    ("stringBlobResponseForbidden rule dropped", lambda d: d["x-credential-handling"].pop("stringBlobResponseForbidden", None), True),
 ]
 
 def assert_gate_manifest():
