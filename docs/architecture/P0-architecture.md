@@ -201,6 +201,7 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
   - **server-id 基线（2026-09-24 实测）**：live reader = 3306→`429578087`、3307→`429521499`、3308→`429545519`（live 未显式设，DM 自动生成）。**dmprobe 必须显式设** server-id（不依赖自动生成）且**段隔离**：live≈`4.29e8`，probe 取 `5.2e8` 段（如 `520000001/2/3`）。`binlog_expire_logs_seconds=2592000`（30d）→ 起点在窗口内，无 purge 风险。
 - **源配置编辑**：`dmctl config source -p` 是 **export**（非 update）；无单源 update；唯一变更是 **master 级整树 `config import`**，无法 per-source 隔离 ⇒ 属 **P1**，在新 cluster / 维护窗口补测，不在 live 上试。
 - 凭据外置：`/data/dm-mysql/tidb-target.env`（0600、4 键、**不入仓**、未回显）；后端读该文件做连通预检。
+- **SSRF 白名单作用域（2026-09-24 定）**：`DM_SSRF_ALLOWED_HOSTS/_CIDRS` **仅**约束 **`/datasources/test`**（用户给定 datasource host，deny-by-default）；**`DM_MASTER_ADDRS` 出站不走 SSRF**（`doUpstream` 直连），故 `http://127.0.0.1:8361` 合法、无需入白名单。白名单只需覆盖用户数据源目标（POC = `10.168.2.241:4000`）。
 - 后续：POC 结束轮换 `root`@`%`（口令已外泄）。
 
 ### 11.6 DM 错误码 → 契约码映射（404 语义统一，2026-09-24 定）
