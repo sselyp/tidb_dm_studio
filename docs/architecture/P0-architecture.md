@@ -207,8 +207,10 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 ### 11.6 DM 错误码 → 契约码映射（404 语义统一，2026-09-24 定）
 - **未知任务**（`GET /tasks/{name}`、`/tasks/{name}/status`、`/tasks/{name}/yaml`）**一律 404 `E_NOT_FOUND`**；`state:"new"` 仅表示**客户端草稿（未创建）**，不用于服务端资源查询（只读面现状 200 `new` 作废）。
 - DM `GET /tasks/{name}` 返回 **400 + `error_code 46018`**（task not exist）→ 映射 **404 `E_NOT_FOUND`**。
-- 通用规则：dm-master **可达** + DM **4xx 业务码** → 按「DM `error_code` → 契约码」表映射；**未识别 4xx** → 原 4xx + 原码进 `data`。dm-master **可达 + DM 5xx（内部错/超时）→ 502 `E_DM_UNAVAILABLE`**（DM 原始 `status`/`error_code` 进 `data`；**不得**转 422/`PRECHECK_*`、**不得**伪装 404）。**502 仅用于控制面不可用** = 连接不可达/超时 **∪** 可达但 5xx **∪** 可达 2xx 但响应不可解析（D12-b 修订）。
+- 通用规则：dm-master **可达** + DM **4xx 业务码** → 按「DM `error_code` → 契约码」表映射；**未识别 4xx** → **400 `E_BAD_REQUEST`** + `data.upstreamStatus`/`data.dmErrorCode`（**不外透 DM 4xx 状态**，避免 DM 401/403 误导前端登录态）。dm-master **可达 + DM 5xx（内部错/超时）→ 502 `E_DM_UNAVAILABLE`**（DM 原始 `status`/`error_code` 进 `data`；**不得**转 422/`PRECHECK_*`、**不得**伪装 404）。**502 仅用于控制面不可用** = 连接不可达/超时 **∪** 可达但 5xx **∪** 可达 2xx 但响应不可解析（D12-b 修订）。
 - **上游 2xx 但响应体非 JSON/非对象/非预期** → **502 `E_DM_UNAVAILABLE`**（`data` 记 `upstreamStatus`）；**代理自身内部错**（panic / 编码失败 / D16 fail-closed）→ **500 `E_INTERNAL`（`50001`）**，仅审计、不回显敏感。两类均**不**伪装 404、**不**转 422。
+- **结构化上游诊断字段（2026-09-24 定）**：`ErrorEnvelope.data` 增**可选** `upstreamStatus`(integer) / `dmErrorCode`(integer)。**可达**上游错误（5xx / 2xx-坏body / 未识别 4xx）**必带**；**连接不可达（无上游响应）缺省**。入 `api/openapi.yaml` + `contract_manifest` must-FAIL 变异（**删字段 → `check_contract` FAIL**），否则门禁抓不到。
+- **dmctl 逻辑失败**（`pause/resume/...` `result:false`，**非**上游 HTTP）→ **409 `E_STATE_CONFLICT`(40901)**，envelope `message` = dmctl **脱敏** msg，**不伪造 `PRECHECK_*` fieldError**；**dmctl 二进制缺失/exec 失败**（无上游交互）→ **502 `E_DM_UNAVAILABLE`**。
 - **`/status` 收口**：未创建 → **404**（**删除**原 200 `new` 回退）；dm-master 不可达 → **502 `E_DM_UNAVAILABLE`**。前端将 `/status` 404 视作客户端草稿 `new`。openapi 对 `/tasks/{name}`、`/status`、`/yaml` 补 **404**（+`502`）。
 - **读端点 × DM 不可达 处置（定稿，2026-09-24）**：
 
