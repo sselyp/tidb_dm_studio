@@ -187,9 +187,10 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 ### 11.5 POC 目标口径（2026-09-24 定，@ds-测试 取证）
 - 目标地址：**`10.168.2.241:4000`**（现网同口径）；`192.168.2.241` 仅宿主内可达，**不得**写入文档/配置。
 - 目标账号：**`dm_verify`（最小权限）**，授权仅 `dm_meta.*` / `shop.*` / `shop_merged.*`（DDL/DML，无 SUPER/GRANT）；**不落 root**。超范围库须**扩授 dm_verify**。
-- 目标库映射（选项 **B**，零改授权）：single→`shop`，shards→`shop_merged`。
-- **目标隔离**：新 probe task 目标用独立库 **`probe_shop`**（须 `GRANT ... ON probe_shop.* TO 'dm_verify'@'%'`），避与 live 的 `shop`/`shop_merged` 写冲突。
-- **worker 容量**：本部署 **1 worker = 1 source**（`-w`→`46033 not free`、无多源开关），3 source 已占满 ⇒ 跑新任务须 **scale-out 第 4 个 dm-worker**（或独立 DM 控制面 / 维护窗口）。
-- **源配置编辑**：`dmctl config source -p` 是 **export**（非 update）；无单源 update；唯一变更是 **master 级整树 `config import`**，无法 per-source 隔离 ⇒ 属 **P1**，不在 live 上试。
+- 目标库映射（选项 **B**）：single→`shop`，shards→`shop_merged`（现网 live 口径）。
+- **POC 运行面（2026-09-24 定 —— @易鹏 选 ②）**：**独立 DM 控制面 `dmprobe`**（tiup 另起 cluster，独立端口/目录，`server_configs.master.openapi: true`），零触碰 live master/worker 与 2 个 live 任务。共置与 scale-out 第 4 worker **均撤销**。
+- **数据面隔离（必须）**：新 cluster `meta-schema = probe_dm_meta`（避开 live `dm_meta`）；目标库 single→**`probe_shop`**、shards→**`probe_shop_merged`**（避开 live `shop`/`shop_merged`）。三者须建库并 `GRANT ... TO 'dm_verify'@'%'`。收尾 `tiup dm destroy dmprobe` + drop `probe_*`。
+- **worker 容量**：本部署 **1 worker = 1 source**（`-w`→`46033 not free`、无多源开关）；独立控制面天然规避，**不再 scale-out live**。
+- **源配置编辑**：`dmctl config source -p` 是 **export**（非 update）；无单源 update；唯一变更是 **master 级整树 `config import`**，无法 per-source 隔离 ⇒ 属 **P1**，在新 cluster / 维护窗口补测，不在 live 上试。
 - 凭据外置：`/data/dm-mysql/tidb-target.env`（0600、4 键、**不入仓**、未回显）；后端读该文件做连通预检。
 - 后续：POC 结束轮换 `root`@`%`（口令已外泄）。
