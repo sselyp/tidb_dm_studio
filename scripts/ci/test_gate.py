@@ -242,7 +242,9 @@ EXPECT_SUBSTR = {
     "re-introduce Task.rawYaml (string-blob response channel)": "string-blob Task.rawYaml is response-reachable",
     "TaskYamlWrite.rawYaml loses writeOnly (blob input no longer input-only)": "writeOnlyRequestFields entry TaskYamlWrite.rawYaml must set writeOnly:true",
     "stringBlobResponseForbidden rule dropped": "stringBlobResponseForbidden must register forbidden",
-}# D16 hardening (DS-代码审核 seq=16 / DS-测试 seq=17): a response-reachable writeOnly credential
+}
+
+# D16 hardening (DS-代码审核 seq=16 / DS-测试 seq=17): a response-reachable writeOnly credential
 # may only skip the no-echo scan when it is registered as an own path AND canary-covered.
 MUTATIONS += [
     ("response-reachable writeOnly credential without ownPath registration", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string", "writeOnly": True}), True),
@@ -306,7 +308,18 @@ def main():
         return 2
     base = load(spec)
     tmpdir = tempfile.mkdtemp(prefix="gate_selftest_")
-    holes, fps, unapplied = [], [], []
+    holes, fps, unapplied, harness = [], [], [], []
+
+    # S2 positive control (architect seq=38/40): run the checker once on the *unmutated*
+    # spec. It must PASS (exit 0). Anything else means the checker/harness itself is broken,
+    # so every downstream verdict is untrustworthy -> HARNESS ERROR, never a silent pass.
+    pristine = subprocess.run([sys.executable, CHECKER, spec], capture_output=True, text=True)
+    if pristine.returncode != 0:
+        harness.append("(pristine control) clean spec did not PASS")
+        print(
+            f"  HARNESS ERROR pristine control: checker exit {pristine.returncode} on "
+            f"unmutated spec\n{pristine.stdout}{pristine.stderr}"
+        )
     for name, mutate, must_fail in MUTATIONS:
         d = copy.deepcopy(base)
         try:
@@ -323,7 +336,12 @@ def main():
             yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
         r = subprocess.run([sys.executable, CHECKER, p], capture_output=True, text=True)
         out = r.stdout + r.stderr
-        caught = r.returncode != 0
+        rc = r.returncode
+        if rc not in (0, 1):  # S2: a crash/infra error is NOT a contract verdict
+            harness.append(name)
+            print(f"  HARNESS ERROR {name} (checker exit {rc}; not a contract verdict)")
+            continue
+        caught = rc == 1
         exp = EXPECT_SUBSTR.get(name)
         hit = exp is None or exp in out
         if must_fail and (not caught or not hit):
@@ -368,7 +386,12 @@ def main():
             json.dump(ex, f, ensure_ascii=False, indent=2)
         r = subprocess.run([sys.executable, m_checker, m_spec], capture_output=True, text=True)
         out = r.stdout + r.stderr
-        caught = r.returncode != 0
+        rc = r.returncode
+        if rc not in (0, 1):  # S2: crash/infra error is NOT a contract verdict
+            harness.append(name)
+            print(f"  HARNESS ERROR {name} (checker exit {rc}; not a contract verdict)")
+            continue
+        caught = rc == 1
         exp = EXPECT_SUBSTR.get(name)
         hit = exp is None or exp in out
         if not caught or not hit:
@@ -384,9 +407,10 @@ def main():
     total = len(MUTATIONS) + len(EXAMPLE_MUTATIONS)
     print(
         f"\n{total} mutations: {len(holes)} hole(s) [checker missed], "
-        f"{len(unapplied)} unapplied [binding absent in spec], {len(fps)} false positive(s)"
+        f"{len(unapplied)} unapplied [binding absent in spec], {len(fps)} false positive(s), "
+        f"{len(harness)} harness error(s)"
     )
-    return 1 if (holes or fps or unapplied) else 0
+    return 1 if (holes or fps or unapplied or harness) else 0
 
 
 if __name__ == "__main__":
