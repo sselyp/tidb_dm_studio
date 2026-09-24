@@ -61,6 +61,19 @@ Web 平台，把 MySQL → TiDB 的 DM 迁移**全参数可视化配置**，替�
 - 除 `POST /api/login`、健康检查外，`/api/**` 未认证一律 401。
 - 首登未改密期间，除 `/login` `/logout` `/password` **`/me`** 白名单外一律 40302。`GET /me` 必须在该状态下仍返回 **200**（携带 `mustChangePassword:true`），否则前端守卫无法进入强制改密分支。
 
+### 4.1 CI 门禁退出码契约（`check_contract.py` / `test_gate.py`）
+
+冻结三元组，双方照此写，禁止分叉：
+
+| 退出码 | 语义 |
+|---|---|
+| `0` | PASS（检查器通过） |
+| `1` | CONTRACT_VIOLATION（真实捕获到契约问题） |
+| `2` | HARNESS_ERROR（检查器/infra 异常） |
+
+- `check_contract.py` `main()` 必须有顶层 `try/except`：意外异常打印后 `sys.exit(2)`；正常「发现问题」仍 `exit(1)`。
+- `test_gate.py`：`caught = (r.returncode == 1)`；`returncode == 2` 或 `not in (0,1)` → 记 **HARNESS ERROR** 并使 gate FAIL（**不得计入 caught**）；先跑 **pristine 正控**（干净未变异树 → 必须 exit 0，否则 HARNESS ERROR）。防 `caught = returncode != 0` 的 fail-open。
+
 ## 5. 认证与会话
 
 - 端点：`POST /api/login`、`POST /api/logout`、`POST /api/password`、`GET /api/me`。
