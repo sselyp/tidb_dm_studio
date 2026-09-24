@@ -193,7 +193,7 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 - 目标地址：**`10.168.2.241:4000`**（现网同口径）；`192.168.2.241` 仅宿主内可达，**不得**写入文档/配置。
 - 目标账号：**`dm_verify`（最小权限）**，授权仅 `dm_meta.*` / `shop.*` / `shop_merged.*`（DDL/DML，无 SUPER/GRANT）；**不落 root**。超范围库须**扩授 dm_verify**。
 - 目标库映射（选项 **B**）：single→`shop`，shards→`shop_merged`（现网 live 口径）。
-- **POC 运行面（2026-09-24 定 —— @易鹏 选 ②）**：**独立 DM 控制面 `dmprobe`**（tiup 另起 cluster，独立端口/目录，`server_configs.master.openapi: true`），零触碰 live master/worker 与 2 个 live 任务。共置与 scale-out 第 4 worker **均撤销**。
+- **POC 运行面（2026-09-24 定 —— @易鹏 选 ②）**：**独立 DM 控制面 `dmprobe`**（tiup 另起 cluster，目录 `/data/dm-deploy-probe`，端口 master **8361** / worker **8362-8364** / peer **8391** / **:18080**，`server_configs.master.openapi: true`），零触碰 live master/worker 与 2 个 live 任务。共置与 scale-out 第 4 worker **均撤销**。
 - **数据面隔离（必须）**：新 cluster `meta-schema = probe_dm_meta`（避开 live `dm_meta`）；目标库 single→**`probe_shop`**、shards→**`probe_shop_merged`**（避开 live `shop`/`shop_merged`）。三者须建库并 `GRANT ... TO 'dm_verify'@'%'`。收尾 `tiup dm destroy dmprobe` + drop `probe_*`。
 - **worker 容量**：本部署 **1 worker = 1 source**（`-w`→`46033 not free`、无多源开关）；独立控制面天然规避，**不再 scale-out live**。
 - **共源读取（前置门槛）**：`dmprobe` 与 live 同读上游 3306/3307/3308 **允许**（MySQL 多副本），但 **server-id 必须按 cluster/worker 唯一**——同源相同 server-id 会触发 MySQL 踢旧连接、两 side 互踢。relay-dir / `meta-schema` / 端口全独立。建 task **前**须在源核 `SHOW PROCESSLIST`/`SHOW REPLICAS`（或 `SHOW SLAVE HOSTS`）确认两 cluster 连接并存无被 kill，并确认源端 binlog 保留覆盖两 cluster 起点；未过门槛不得建 task。
