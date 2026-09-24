@@ -23,6 +23,7 @@ export const ErrorCodes = {
   E_PRECONDITION_REQUIRED: { http: 428, code: 42801 },
   E_RATE_LIMITED: { http: 429, code: 42901 },
   E_ACCOUNT_LOCKED: { http: 429, code: 42902 },
+  E_INTERNAL: { http: 500, code: 50001 },
   E_DM_UNAVAILABLE: { http: 502, code: 50201 },
 } as const;
 

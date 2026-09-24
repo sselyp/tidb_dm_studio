@@ -27,6 +27,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/MeResult" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -38,6 +39,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "204": { description: 会话已吊销 }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
@@ -52,6 +54,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/PasswordChangeRequest" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "204": { description: 已改密，全部会话吊销 }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
@@ -64,6 +67,7 @@ paths:
         登录态探测。强制改密期（mustChangePassword=true）仍返回 200，**不返回 40302**，
         以便前端守卫先读到 mustChangePassword 再跳改密页，避免刷新即回 /login 的死循环。
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/MeResult" }
         "401": { $ref: "#/components/responses/Error" }
   /healthz:
@@ -76,6 +80,7 @@ paths:
         存活探针；根路径 /healthz（operation-level servers 覆盖全局 /api 前缀）。
         未认证白名单（与 /login 同列），供编排/负载均衡探活。
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200":
           description: OK
           content:
@@ -91,6 +96,7 @@ paths:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/DataSourceList" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
@@ -105,6 +111,7 @@ paths:
           schema: { type: string }
       requestBody: { $ref: "#/components/requestBodies/DataSourceWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "201": { $ref: "#/components/responses/DataSourceItem" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -117,6 +124,7 @@ paths:
     get:
       operationId: getDataSource
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/DataSourceItem" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
@@ -128,6 +136,7 @@ paths:
         - $ref: "#/components/parameters/IfMatch"
       requestBody: { $ref: "#/components/requestBodies/DataSourceWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/DataSourceItem" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -141,6 +150,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "204": { description: Deleted }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
@@ -157,6 +167,7 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       requestBody: { $ref: "#/components/requestBodies/DataSourceWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/ConnectionTestResult" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -169,6 +180,7 @@ paths:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/TaskList" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
@@ -183,6 +195,7 @@ paths:
           schema: { type: string }
       requestBody: { $ref: "#/components/requestBodies/TaskWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "201": { $ref: "#/components/responses/TaskItem" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -197,6 +210,7 @@ paths:
           in: query
           schema: { type: string, enum: [all, full, incremental], default: all }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/TaskSchema" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -211,6 +225,7 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       requestBody: { $ref: "#/components/requestBodies/TaskWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/ValidationResult" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -230,6 +245,7 @@ paths:
           schema: { type: string, enum: [schema, connectivity], default: schema }
       requestBody: { $ref: "#/components/requestBodies/TaskWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/ValidationResult" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -241,6 +257,7 @@ paths:
     get:
       operationId: getTask
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/TaskItem" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -254,6 +271,7 @@ paths:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody: { $ref: "#/components/requestBodies/TaskUpdateWrite" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/TaskItem" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -267,6 +285,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "204": { description: Deleted }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -288,6 +307,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/StateRequest" }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/StateResult" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -302,6 +322,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/NamePath"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/TaskStatus" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -315,6 +336,7 @@ paths:
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 200 } }
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200": { $ref: "#/components/responses/LogPage" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -329,6 +351,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/NamePath"
       responses:
+        "500": { $ref: "#/components/responses/Error" }
         "200":
           description: YAML
           content:
@@ -927,6 +950,7 @@ x-error-codes:
   - { http: 428, code: 42801, name: E_PRECONDITION_REQUIRED }
   - { http: 429, code: 42901, name: E_RATE_LIMITED }
   - { http: 429, code: 42902, name: E_ACCOUNT_LOCKED }
+  - { http: 500, code: 50001, name: E_INTERNAL }
   - { http: 502, code: 50201, name: E_DM_UNAVAILABLE }
 x-field-error-codes:
   - E_FIELD_REQUIRED
