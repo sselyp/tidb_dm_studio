@@ -9,7 +9,7 @@ info:
     cookieAuth 全局生效；除 /login、/healthz 外 /api/** 未认证 401、无权限 403、首登未改密 40302、CSRF 失败 40303。
     状态码为权威；code=0 仅表示请求已处理；错误统一 data.errors；字段错误码见 x-field-error-codes。
     诊断端点（/task-validate、/task-precheck 各 level、/datasources/test）body 可解析为对象即恒 200 + data.valid；非 JSON/非对象 → 400。
-    写侧端点请求体非法 → 422 E_VALIDATION_FAILED；502 仅 DM 控制面不可达 E_DM_UNAVAILABLE。
+    写侧端点请求体非法 → 422 E_VALIDATION_FAILED；502 仅 DM 控制面不可用（不可达或返回 5xx）E_DM_UNAVAILABLE。
     带 body 的 state-changing 请求须 Content-Type: application/json；无 body 的 state-changing（如 DELETE、/logout）不强制该头，但仍校验 Origin/CSRF。
     配置落库为物化展开（见 x-config-storage）；读取恒返回有效 per-source 配置。
 servers:
@@ -222,7 +222,7 @@ paths:
         D12-b 诊断端点：level=schema 等价 validate；level=connectivity 经 dm-master。
         DM v7.1.6 无 REST 预检端点，connectivity 由后端复用 DM 检查项（与 dmctl check-task 同源）执行。
         body 可解析为对象即恒 200：仅上游 source 不可达/权限不足 → data.valid=false（reachable 权威）；
-        dm-master 控制面自身不可达 → 502 E_DM_UNAVAILABLE；非 JSON/非对象 → 400。
+        dm-master 控制面不可用（不可达或返回 5xx）→ 502 E_DM_UNAVAILABLE；非 JSON/非对象 → 400。
       parameters:
         - $ref: "#/components/parameters/CsrfToken"
         - name: level
@@ -673,7 +673,7 @@ components:
       description: >-
         连通/权限诊断结果（HTTP 200 表示检查已执行）。valid = reachable && authenticated（统一判据）；
         errors 恒为数组，valid=true 时为 []。上游不可达/鉴权失败不映射 502，在此以 valid=false 表达；
-        502 E_DM_UNAVAILABLE 仅用于 DM 控制面自身不可达。
+        502 E_DM_UNAVAILABLE 仅用于 DM 控制面不可用（不可达或返回 5xx）。
       properties:
         valid: { type: boolean }
         reachable: { type: boolean }

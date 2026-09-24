@@ -205,6 +205,6 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 ### 11.6 DM 错误码 → 契约码映射（404 语义统一，2026-09-24 定）
 - **未知任务**（`GET /tasks/{name}`、`/tasks/{name}/status`、`/tasks/{name}/yaml`）**一律 404 `E_NOT_FOUND`**；`state:"new"` 仅表示**客户端草稿（未创建）**，不用于服务端资源查询（只读面现状 200 `new` 作废）。
 - DM `GET /tasks/{name}` 返回 **400 + `error_code 46018`**（task not exist）→ 映射 **404 `E_NOT_FOUND`**。
-- 通用规则：dm-master **可达**但返回业务错误码时，按「DM `error_code` → 契约码」表映射；**502 仅限 dm-master 控制面不可达**（D12-b）。未识别 DM 码 → 原码进 `data`，HTTP 按语义（4xx/5xx），**不得伪装 404**。
+- 通用规则：dm-master **可达** + DM **4xx 业务码** → 按「DM `error_code` → 契约码」表映射；**未识别 4xx** → 原 4xx + 原码进 `data`。dm-master **可达 + DM 5xx（内部错/超时）→ 502 `E_DM_UNAVAILABLE`**（DM 原始 `status`/`error_code` 进 `data`；**不得**转 422/`PRECHECK_*`、**不得**伪装 404）。**502 仅用于控制面不可用** = 连接不可达/超时 **或** 可达但 5xx（D12-b 修订）。
 - **`/status` 收口**：未创建 → **404**（**删除**原 200 `new` 回退）；dm-master 不可达 → **502 `E_DM_UNAVAILABLE`**。前端将 `/status` 404 视作客户端草稿 `new`。openapi 对 `/tasks/{name}`、`/status`、`/yaml` 补 **404**（+`502`）。
 - 方法不匹配：契约宜 **405**（P1 polish；只读面现回 404 可接受，不阻塞）。
