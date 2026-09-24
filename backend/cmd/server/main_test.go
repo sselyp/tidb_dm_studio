@@ -97,3 +97,9 @@ func TestHasCredKey(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubOnByDefault(t *testing.T) {
+	if !scrubEnabled {
+		t.Fatalf("credential stripping must be on in the default (production) build")
+	}
+}

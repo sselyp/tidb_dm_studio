@@ -4,6 +4,13 @@
 #            dev-only build/proxy config (vite/vitest config), and this script itself.
 set -euo pipefail
 
+# Fail closed if ripgrep is absent: this gate is meaningless without it, and a bare
+# `if rg ...` would silently pass when rg is missing (DS-代码审核 finding F3).
+command -v rg >/dev/null 2>&1 || {
+  echo "FAIL: ripgrep (rg) not found; hardcode gate cannot run (refusing to fail open)" >&2
+  exit 1
+}
+
 EXCLUDES=(
   -g '!**/.git/**'
   -g '!**/*.md'

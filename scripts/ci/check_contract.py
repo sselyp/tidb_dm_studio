@@ -470,6 +470,71 @@ def _array_shape(p):
     return f"{p.get('type', '?')}<{items_desc}>"
 
 
+FROZEN_EXAMPLE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "docs",
+    "architecture",
+    "form-schema.example.json",
+)
+
+
+def _load_frozen_example():
+    with open(FROZEN_EXAMPLE, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def check_frozen_example_parity(doc):
+    """docs/architecture/form-schema.example.json must not drift from the frozen spec surface.
+
+    The example is the frontend renderer's ground truth (schema-driven forms), so the
+    TaskConfig subtree must match api/openapi.yaml exactly — otherwise the renderer silently
+    renders a shape the backend rejects (or vice-versa). Closes the blind spot flagged by
+    review: `TargetDatabase` and `TaskConfig.required` (taskMode) were previously unasserted,
+    and the example `version` could lag `info.version`.
+    """
+    problems = 0
+    if not os.path.exists(FROZEN_EXAMPLE):
+        return fail("frozen example docs/architecture/form-schema.example.json missing")
+    ex = _load_frozen_example()
+    schemas = doc["components"]["schemas"]
+    js = ex.get("jsonSchema") or {}
+
+    if str(ex.get("version")) != str(doc["info"]["version"]):
+        problems += fail(
+            f"example.version {ex.get('version')} != info.version {doc['info']['version']}"
+        )
+
+    ex_req = set(js.get("required") or [])
+    spec_req = set(schemas["TaskConfig"].get("required") or [])
+    if ex_req != spec_req:
+        problems += fail(
+            f"example jsonSchema.required {sorted(ex_req)} != TaskConfig.required {sorted(spec_req)}"
+        )
+
+    ex_td = (js.get("properties") or {}).get("targetDatabase") or {}
+    spec_td = schemas.get("TargetDatabase") or {}
+    if set(ex_td.get("required") or []) != set(spec_td.get("required") or []):
+        problems += fail(
+            f"example targetDatabase.required {sorted(set(ex_td.get('required') or []))} "
+            f"!= TargetDatabase.required {sorted(set(spec_td.get('required') or []))}"
+        )
+    ex_props = set((ex_td.get("properties") or {}).keys())
+    spec_props = set((spec_td.get("properties") or {}).keys())
+    if ex_props != spec_props:
+        problems += fail(
+            f"example targetDatabase properties {sorted(ex_props)} != TargetDatabase {sorted(spec_props)}"
+        )
+    if ex_td.get("additionalProperties") != spec_td.get("additionalProperties"):
+        problems += fail(
+            f"example targetDatabase.additionalProperties {ex_td.get('additionalProperties')} "
+            f"!= spec {spec_td.get('additionalProperties')} (both ends must match)"
+        )
+    for side, td in (("example", ex_td), ("spec", spec_td)):
+        if "security" not in (td.get("properties") or {}):
+            problems += fail(f"{side} targetDatabase must expose security (DM task.yaml target-database key)")
+    return problems
+
+
 ALLOWED_ACTIONS = ["start", "pause", "resume", "stop", "delete"]
 
 
@@ -561,59 +626,150 @@ def check_state_taxonomy(doc):
     return problems
 
 
-SENSITIVE_KEY_TOKENS = ("password", "passwd", "target_config")
-
-
-def _is_credential_key(key):
-    """True only for credential *values*, not policy flags like mustChangePassword."""
-    k = key.lower()
-    if "target_config" in k:
-        return True
-    if "password" in k or "passwd" in k:
-        return "must" not in k
-    return False
-# read/response models that must never carry an upstream credential
-CREDENTIAL_FREE_MODELS = (
-    "Task",
-    "TaskSummary",
-    "TaskStatusData",
-    "StateData",
-    "DataSource",
-    "ConnectivityResult",
-    "LogPageData",
-    "MeData",
-    "SchemaData",
+SENSITIVE_KEY_TOKENS = (
+    "password", "passwd", "secret", "token", "credential", "target_config",
+    "api_key", "apikey", "access_key", "accesskey", "private_key", "privatekey",
+    "client_secret", "dsn", "cert",
+)
+# Substrings marking a key as a *policy/config/metadata* field about a credential
+# rather than the credential value itself (passwordPolicy, passwordMinLength, tokenTtl,
+# certPath, secretName, ...). D16 targets values, so these must not false-positive.
+NON_SECRET_MARKERS = (
+    "policy", "minlength", "min_length", "maxlength", "max_length", "length",
+    "ttl", "expire", "expiry", "timeout", "duration", "interval",
+    "algorithm", "regex", "pattern", "format", "enabled", "count",
+    "must", "required", "path", "file", "files", "dir", "name", "type",
+    "url", "uri", "endpoint", "version", "issuer", "audience", "csrf",
 )
 
 
-def _credential_hits(node, path, schemas, seen=None):
+def _is_credential_key(key):
+    """True only for credential *values*, not policy/config fields about one.
+
+    Name coverage expanded per DS-代码审核 finding F2: authToken / secret / privateKey /
+    dsn / cert / accessKey must be flagged (previously only password/passwd/target_config
+    were). The NON_SECRET_MARKERS exclusion keeps policy/config fields (passwordPolicy,
+    passwordMinLength, tokenTtl, certPath) from false-positiving.
+    """
+    k = str(key).lower()
+    if not any(tok in k for tok in SENSITIVE_KEY_TOKENS):
+        return False
+    if any(m in k for m in NON_SECRET_MARKERS):
+        return False
+    return True
+def _resolve_component(ref, container, components):
+    """Resolve a `#/components/<container>/<name>` ref, else None."""
+    if not (isinstance(ref, str) and ref.startswith("#/components/")):
+        return None
+    parts = ref.rsplit("/", 2)
+    if len(parts) != 3 or parts[1] != container:
+        return None
+    return (components.get(container) or {}).get(parts[2])
+
+
+def _operation_media_schemas(doc, section):
+    """Every media-type schema declared by any operation's responses/requestBody.
+
+    Derived from the spec (DS-代码审核 seq: no hand-maintained model whitelist), so a
+    newly added response/request model is scanned automatically — closing the
+    "new model with a credential slips past the whitelist" gap.
+    """
+    components = doc.get("components") or {}
+    container = "requestBodies" if section == "requestBody" else "responses"
+    for path_item in (doc.get("paths") or {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        for op in path_item.values():
+            if not isinstance(op, dict):
+                continue
+            if section == "requestBody":
+                bodies = [op.get("requestBody")]
+            else:
+                bodies = list((op.get("responses") or {}).values())
+            for body in bodies:
+                if not isinstance(body, dict):
+                    continue
+                node = _resolve_component(body.get("$ref"), container, components) or body
+                for media in (node.get("content") or {}).values():
+                    if isinstance(media, dict) and isinstance(media.get("schema"), dict):
+                        yield media["schema"]
+
+
+def _cred_tails(own_paths):
+    """Registered own-path fields -> their property-key tail (drop the model head).
+
+    A registered field like `TaskConfig.targetDatabase.password` is the property chain
+    `targetDatabase.password` inside its model; the credential walk yields the same chain
+    (head = read model). Comparing tails keeps `$ref` aliases (Task.config -> TaskConfig)
+    transparent without weakening the "unregistered => FAIL" rule.
+    """
+    tails = []
+    for p in own_paths or []:
+        toks = [t for t in str(p).split(".") if t]
+        tails.append(toks[1:] if len(toks) > 1 else toks)
+    return tails
+
+
+def _cred_chain_registered(chain, tails):
+    ct = chain[1:] if len(chain) > 1 else chain
+    for rt in tails:
+        if rt and len(ct) >= len(rt) and ct[-len(rt):] == rt:
+            return True
+    return False
+
+
+def _credential_hits(node, chain, schemas, seen=None, own_tails=()):
     """Walk a response model, dereferencing local `$ref`s so a credential hidden behind
-    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught."""
+    Task.config ($ref TaskConfig) / Task.sources ($ref SourceInstance) is still caught.
+
+    A `writeOnly: true` field is skipped ONLY when its property chain matches an own-path
+    field registered in x-credential-handling.ownPathCredentialFields. OpenAPI `writeOnly`
+    is a serialization convention and does NOT remove the field from a response schema, so
+    an unregistered (or otherwise uncovered) response credential is a FAIL, not a silent
+    skip (DS-代码审核 seq=16).
+    """
     if seen is None:
         seen = set()
+    if not isinstance(node, dict):
+        return []
+    ref = node.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+        name = ref.rsplit("/", 1)[-1]
+        if name in seen:
+            return []
+        target = schemas.get(name)
+        if isinstance(target, dict):
+            return _credential_hits(target, chain, schemas, seen | {name}, own_tails)
+        return []
     hits = []
-    if isinstance(node, dict):
-        ref = node.get("$ref")
-        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
-            name = ref.rsplit("/", 1)[-1]
-            if name in seen:
-                return hits
-            target = schemas.get(name)
-            if target is not None:
-                hits.extend(_credential_hits(target, f"{path}->{name}", schemas, seen | {name}))
-            return hits
-        for key, val in node.items():
-            if _is_credential_key(key):
-                target = val
-                if isinstance(val, dict) and isinstance(val.get("$ref"), str) and val["$ref"].startswith("#/components/schemas/"):
-                    target = schemas.get(val["$ref"].rsplit("/", 1)[-1], val)
-                if not (isinstance(target, dict) and target.get("writeOnly") is True):
-                    hits.append(f"{path}.{key}")
-            hits.extend(_credential_hits(val, f"{path}.{key}", schemas, seen))
-    elif isinstance(node, list):
-        for i, val in enumerate(node):
-            hits.extend(_credential_hits(val, f"{path}[{i}]", schemas, seen))
+    props = node.get("properties")
+    if isinstance(props, dict):
+        for pname, pschema in props.items():
+            child = chain + [str(pname)]
+            if _is_credential_key(pname):
+                target = pschema
+                if isinstance(pschema, dict) and isinstance(pschema.get("$ref"), str) and pschema["$ref"].startswith("#/components/schemas/"):
+                    target = schemas.get(pschema["$ref"].rsplit("/", 1)[-1], pschema)
+                allowed = (
+                    isinstance(target, dict)
+                    and target.get("writeOnly") is True
+                    and _cred_chain_registered(child, own_tails)
+                )
+                if not allowed:
+                    hits.append(".".join(child))
+            hits.extend(_credential_hits(pschema, child, schemas, seen, own_tails))
+    for key in ("items", "additionalProperties", "not"):
+        sub = node.get(key)
+        if isinstance(sub, dict):
+            hits.extend(_credential_hits(sub, chain, schemas, seen, own_tails))
+    for key in ("allOf", "anyOf", "oneOf", "prefixItems"):
+        sub = node.get(key)
+        if isinstance(sub, list):
+            for item in sub:
+                hits.extend(_credential_hits(item, chain, schemas, seen, own_tails))
     return hits
+
+
 
 
 def check_no_credential_echo(doc):
@@ -634,19 +790,19 @@ def check_no_credential_echo(doc):
             problems += fail(f"x-credential-handling.neverInResponses must include '{tok}'")
     if not ch.get("stripFromUpstreamResponses"):
         problems += fail("x-credential-handling.stripFromUpstreamResponses must list DM passthrough fields")
-    for name in CREDENTIAL_FREE_MODELS:
-        sch = schemas.get(name)
-        if not sch:
-            continue
-        for hit in _credential_hits(sch, name, schemas):
+    # Response side: scan every response-reachable media schema (structurally derived),
+    # skipping only credentials registered in ownPathCredentialFields (whose runtime
+    # no-echo guarantee is pinned by the canary via check_own_path_canary_coverage).
+    own_tails = _cred_tails(ch.get("ownPathCredentialFields"))
+    for schema in _operation_media_schemas(doc, "responses"):
+        for hit in _credential_hits(schema, ["<response>"], schemas, None, own_tails):
             problems += fail(f"response schema {hit} exposes a credential (D16 no-echo)")
-    # request-side credentials must be writeOnly (input-only, never echoed back)
-    for parent in ("LoginRequest", "PasswordChangeRequest", "DataSourceWrite"):
-        sch = schemas.get(parent) or {}
-        for key, prop in (sch.get("properties") or {}).items():
-            if _is_credential_key(key):
-                if prop.get("writeOnly") is not True:
-                    problems += fail(f"{parent}.{key} must set writeOnly:true (D16 input-only)")
+    # Request side: every request-reachable credential must be writeOnly AND registered
+    # in writeOnlyRequestFields (input-only channel, never echoed back).
+    req_tails = _cred_tails(ch.get("writeOnlyRequestFields"))
+    for schema in _operation_media_schemas(doc, "requestBody"):
+        for hit in _credential_hits(schema, ["<request>"], schemas, None, req_tails):
+            problems += fail(f"request schema {hit} must be a writeOnly, registered credential (D16 input-only)")
     return problems
 
 
@@ -842,7 +998,7 @@ def check_diagnostic_codes(doc):
     """Upstream failures live in the diagnostic registry; retired 50202/50203 must not return."""
     problems = 0
     codes = {c.get("code") for c in doc.get("x-precheck-codes", []) if isinstance(c, dict)}
-    for need in ("E_SOURCE_UNREACHABLE", "E_TARGET_AUTH_FAILED"):
+    for need in ("PRECHECK_SOURCE_UNREACHABLE", "PRECHECK_TARGET_AUTH_FAILED"):
         if need not in codes:
             problems += fail(f"x-precheck-codes must register {need}")
     all_codes = codes | {c.get("code") for c in doc.get("x-error-codes", [])}
@@ -913,6 +1069,30 @@ def check_own_path_credential(doc):
         problems += fail("x-credential-handling.writeOnlyRequestFields must include TaskConfig.targetDatabase.password")
     if schemas.get("Task", {}).get("properties", {}).get("config", {}).get("$ref", "") != "#/components/schemas/TaskConfig":
         problems += fail("Task.config must $ref TaskConfig (single read/write model, so writeOnly is load-bearing)")
+    return problems
+
+
+def check_own_path_canary_coverage(doc):
+    """Every own-path credential that is allowed to skip the D16 no-echo scan MUST be
+    covered by the AC-SEC canary (DS-代码审核 seq=16 / DS-测试 seq=17).
+
+    `writeOnly` alone does not prove "never echoed": the field is still reachable from a
+    response schema, so the guarantee moves to the runtime canary. If a future own-path
+    credential is registered without canary coverage, skipping it would be a silent blind
+    spot -> FAIL here.
+    """
+    ch = doc.get("x-credential-handling") or {}
+    own = ch.get("ownPathCredentialFields") or []
+    covered = ch.get("canaryCoveredFields") or []
+    problems = 0
+    if not own:
+        problems += fail("x-credential-handling.ownPathCredentialFields must list the own-path credential(s)")
+    for f in own:
+        if f not in covered:
+            problems += fail(f"own-path credential {f} has no canary coverage (add it to x-credential-handling.canaryCoveredFields)")
+    for f in covered:
+        if f not in own:
+            problems += fail(f"canaryCoveredFields lists {f} which is not an ownPathCredentialField (stale coverage)")
     return problems
 
 
@@ -989,6 +1169,7 @@ CHECKS = [
     check_dm_compat,
     check_task_config_isomorphic,
     check_source_instance_shapes,
+    check_frozen_example_parity,
     check_allowed_actions,
     check_no_credential_echo,
     check_manifest,
@@ -1004,6 +1185,7 @@ CHECKS = [
     check_502_scope,
     check_healthz_public,
     check_own_path_credential,
+    check_own_path_canary_coverage,
     check_schema_ui_channel,
     check_freeze,
 ]

@@ -44,6 +44,8 @@ jobs:
           else
             echo "test_credential_canary.py not present yet, skipping"
           fi
+      - name: Install ripgrep (hardcode gate dependency; ubuntu runners lack rg)
+        run: sudo apt-get update -qq && sudo apt-get install -y ripgrep
       - name: No hardcoded addresses / credentials
         run: |
           if [ -f scripts/ci/check_no_hardcoded.sh ]; then
@@ -65,6 +67,50 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
+      # The DM_SCRUB negative control only exists behind -tags canary; prove that build compiles.
+      - run: go build -tags canary ./...
+      - run: go test -tags canary ./...
+
+  # Live credential-canary gate (AC-SEC). Required wherever a dm-master is reachable:
+  # set repo variable DM_MASTER_ADDRS (e.g. http://<dm-master-host>:8261) to run the positive
+  # control (scrub on -> exit 0) and the reverse control (scrub off -> must exit 0 via
+  # --expect-leak). Skipped otherwise so contract-only CI stays green.
+  canary-live:
+    if: ${{ vars.DM_MASTER_ADDRS != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: python3 -m pip install --quiet pyyaml
+      - name: Build canary proxy (-tags canary)
+        working-directory: backend
+        run: go build -tags canary -o /tmp/dm-web-canary ./cmd/server
+      - name: Positive control (scrub on) -> must exit 0
+        env:
+          DM_WEB_LISTEN: 127.0.0.1:18080
+          DM_MASTER_ADDRS: ${{ vars.DM_MASTER_ADDRS }}
+          DM_BASE_URL: http://127.0.0.1:18080/api
+        run: |
+          /tmp/dm-web-canary & echo $! > /tmp/proxy.pid
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:18080/healthz >/dev/null && break; sleep 0.5; done
+          python3 scripts/ci/test_credential_canary.py
+          kill "$(cat /tmp/proxy.pid)"
+      - name: Reverse control (scrub off) -> must detect leak (exit 0 per --expect-leak)
+        env:
+          DM_WEB_LISTEN: 127.0.0.1:18081
+          DM_MASTER_ADDRS: ${{ vars.DM_MASTER_ADDRS }}
+          DM_BASE_URL: http://127.0.0.1:18081/api
+          DM_SCRUB: "off"
+        run: |
+          /tmp/dm-web-canary & echo $! > /tmp/proxy.pid
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:18081/healthz >/dev/null && break; sleep 0.5; done
+          python3 scripts/ci/test_credential_canary.py --expect-leak
+          kill "$(cat /tmp/proxy.pid)"
 
   frontend:
     runs-on: ubuntu-latest

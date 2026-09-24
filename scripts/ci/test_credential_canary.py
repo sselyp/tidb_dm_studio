@@ -13,9 +13,11 @@ CI stays green. ``--selfcheck`` exercises the scanner offline (no service needed
 
 Usage:
   python scripts/ci/test_credential_canary.py --selfcheck
-  $env:DM_BASE_URL="http://<dm-proxy-host>:8080/api"; $env:DM_SESSION_COOKIE="dm_session=...";
-  $env:DM_CSRF_TOKEN="..."; $env:DM_TASK_NAME="canary-sec";
-  $env:DM_LOG_FILES="C:\\logs\\app.log";
+  export DM_BASE_URL=http://<dm-proxy-host>:8080/api
+  export DM_SESSION_COOKIE=<dm_session-cookie>
+  export DM_CSRF_TOKEN=<csrf-token>
+  export DM_TASK_NAME=<task-name>
+  export DM_LOG_FILES=<path-to-app.log>
   python scripts/ci/test_credential_canary.py
 
 Exit non-zero on any leak (or a write that did not apply), 0 otherwise.
@@ -125,6 +127,12 @@ def run(base, headers, task, canary, failures):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selfcheck", action="store_true")
+    ap.add_argument(
+        "--expect-leak",
+        action="store_true",
+        help="reverse control: assert the canary IS detected (scrub disabled); "
+        "exit 0 only if a leak is found, 1 if the scanner silently passes",
+    )
     args = ap.parse_args()
     if args.selfcheck:
         return selfcheck()
@@ -143,6 +151,18 @@ def main():
         headers["X-CSRF-Token"] = os.environ["DM_CSRF_TOKEN"]
 
     failures = run(base, headers, task, canary, [])
+    leaks = [f for f in failures if f.startswith("LEAK")]
+    if args.expect_leak:
+        if leaks:
+            print(f"OK: reverse control detected {len(leaks)} leak channel(s) (scrub disabled)")
+            return 0
+        if failures:
+            print("FAIL: reverse control could not validate (no leak, and the run itself errored):")
+            for f in failures:
+                print(f"  - {f}")
+            return 1
+        print("FAIL: reverse control found NO leak with scrub disabled (silent blind spot)")
+        return 1
     if failures:
         print(f"FAIL: credential canary leaked ({len(failures)}):")
         for f in failures:

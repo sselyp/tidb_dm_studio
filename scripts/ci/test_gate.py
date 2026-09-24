@@ -127,8 +127,8 @@ MUTATIONS = [
     ("drop required 'valid' from ConnectivityResult", lambda d: require_field_pop(d, "ConnectivityResult", "valid"), True),
     ("drop required 'errors' from ConnectivityResult (want [] when valid)", lambda d: require_field_pop(d, "ConnectivityResult", "errors"), True),
     ("retired 50202 re-introduced into x-error-codes", reintroduce_retired_502, True),
-    ("drop E_SOURCE_UNREACHABLE from x-precheck-codes", lambda d: drop_precheck_code(d, "E_SOURCE_UNREACHABLE"), True),
-    ("drop E_TARGET_AUTH_FAILED from x-precheck-codes", lambda d: drop_precheck_code(d, "E_TARGET_AUTH_FAILED"), True),
+    ("drop PRECHECK_SOURCE_UNREACHABLE from x-precheck-codes", lambda d: drop_precheck_code(d, "PRECHECK_SOURCE_UNREACHABLE"), True),
+    ("drop PRECHECK_TARGET_AUTH_FAILED from x-precheck-codes", lambda d: drop_precheck_code(d, "PRECHECK_TARGET_AUTH_FAILED"), True),
     ("x-error-codes code prefix != http", misalign_error_code, True),
     ("/task-precheck description reintroduces upstream-502 wording", lambda d: d["paths"]["/task-precheck"]["post"].__setitem__("description", "level=connectivity 触达上游，失败回 502。"), True),
     # D14 (v0.9.2): six-state enum + `failed` state derivation must be pinned.
@@ -239,8 +239,31 @@ EXPECT_SUBSTR = {
     "TargetDatabase.additionalProperties flips vs example": "TargetDatabase.additionalProperties must be true",
     "TargetDatabase.security dropped (example keeps it)": "TargetDatabase.properties must be [host,port,user,password,security,session]",
     "example.version drifts from info.version (frozen doc ground truth)": "form-schema.example.json version",
-}
+}# D16 hardening (DS-代码审核 seq=16 / DS-测试 seq=17): a response-reachable writeOnly credential
+# may only skip the no-echo scan when it is registered as an own path AND canary-covered.
+MUTATIONS += [
+    ("response-reachable writeOnly credential without ownPath registration", lambda d: d["components"]["schemas"]["TaskConfig"]["properties"].__setitem__("password", {"type": "string", "writeOnly": True}), True),
+    ("response-reachable writeOnly credential not in ownPathCredentialFields (SourceInstance)", lambda d: d["components"]["schemas"]["SourceInstance"]["properties"].__setitem__("password", {"type": "string", "writeOnly": True}), True),
+    ("ownPath credential loses canary coverage", lambda d: d["x-credential-handling"].__setitem__("canaryCoveredFields", []), True),
+]
 
+# Structural credential scope (DS-代码审核 seq: replace hand-enumerated whitelist with
+# response/request-reachability derivation). A model OUTSIDE the old whitelist must still
+# be scanned: Envelope is reachable from every response, TaskConfigUpdate from PUT /tasks/{name}.
+MUTATIONS += [
+    ("response model outside old whitelist exposes password (Envelope)", lambda d: d["components"]["schemas"]["Envelope"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)", lambda d: d["components"]["schemas"]["TaskConfigUpdate"]["properties"].__setitem__("password", {"type": "string"}), True),
+]
+
+# D16 credential-name coverage (DS-代码审核 finding F2): alternate credential names must be
+# caught; policy/config fields ABOUT a credential must not false-positive (architect seq=63 #3).
+MUTATIONS += [
+    ("Task response exposes authToken (D16 name coverage)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("authToken", {"type": "string"}), True),
+    ("Task response exposes secret (D16 name coverage)", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("secret", {"type": "string"}), True),
+    ("response model ValidationData exposes password (structural scan; F1 probe)", lambda d: d["components"]["schemas"]["ValidationData"]["properties"].__setitem__("password", {"type": "string"}), True),
+    ("benign: password policy fields are not credentials", lambda d: d["components"]["schemas"]["Task"]["properties"].update({"passwordPolicy": {"type": "string"}, "passwordMinLength": {"type": "integer"}}), False),
+    ("benign: token ttl is not a credential", lambda d: d["components"]["schemas"]["Task"]["properties"].__setitem__("tokenTtl", {"type": "integer"}), False),
+]
 
 def assert_gate_manifest():
     """The manifest pins the mutation set so it cannot silently shrink.

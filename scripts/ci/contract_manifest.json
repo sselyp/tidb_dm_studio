@@ -1,5 +1,5 @@
 {
-  "version": "0.9.5",
+  "version": "0.9.7",
   "note": "Versioned completeness manifest for api/openapi.yaml. Adding/removing an operation or a required status means editing THIS file, so the gate never false-kills a new legitimate endpoint. Reviewed by DS-代码审核.",
   "actionTargetState": {
     "start": "running",
@@ -327,6 +327,7 @@
     "check_dm_compat",
     "check_task_config_isomorphic",
     "check_source_instance_shapes",
+    "check_frozen_example_parity",
     "check_allowed_actions",
     "check_no_credential_echo",
     "check_manifest",
@@ -342,11 +343,12 @@
     "check_502_scope",
     "check_healthz_public",
     "check_own_path_credential",
+    "check_own_path_canary_coverage",
     "check_schema_ui_channel",
     "check_freeze"
   ],
   "mutations": {
-    "count": 82,
+    "count": 92,
     "names": [
       "drop 428 from PUT /tasks/{name}",
       "drop 428 from PUT /datasources/{id}",
@@ -379,8 +381,8 @@
       "drop required 'valid' from ConnectivityResult",
       "drop required 'errors' from ConnectivityResult (want [] when valid)",
       "retired 50202 re-introduced into x-error-codes",
-      "drop E_SOURCE_UNREACHABLE from x-precheck-codes",
-      "drop E_TARGET_AUTH_FAILED from x-precheck-codes",
+      "drop PRECHECK_SOURCE_UNREACHABLE from x-precheck-codes",
+      "drop PRECHECK_TARGET_AUTH_FAILED from x-precheck-codes",
       "x-error-codes code prefix != http",
       "/task-precheck description reintroduces upstream-502 wording",
       "platformState re-introduces 'pending' (D14 forbids)",
@@ -429,6 +431,16 @@
       "TargetDatabase.required dropped (example requires host/port/user)",
       "TargetDatabase.additionalProperties flips vs example",
       "TargetDatabase.security dropped (example keeps it)",
+      "response-reachable writeOnly credential without ownPath registration",
+      "response-reachable writeOnly credential not in ownPathCredentialFields (SourceInstance)",
+      "ownPath credential loses canary coverage",
+      "response model outside old whitelist exposes password (Envelope)",
+      "request model outside old whitelist exposes non-writeOnly password (TaskConfigUpdate)",
+      "Task response exposes authToken (D16 name coverage)",
+      "Task response exposes secret (D16 name coverage)",
+      "response model ValidationData exposes password (structural scan; F1 probe)",
+      "benign: password policy fields are not credentials",
+      "benign: token ttl is not a credential",
       "example.version drifts from info.version (frozen doc ground truth)"
     ]
   }
