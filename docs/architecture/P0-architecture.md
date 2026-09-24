@@ -200,3 +200,9 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 - **源配置编辑**：`dmctl config source -p` 是 **export**（非 update）；无单源 update；唯一变更是 **master 级整树 `config import`**，无法 per-source 隔离 ⇒ 属 **P1**，在新 cluster / 维护窗口补测，不在 live 上试。
 - 凭据外置：`/data/dm-mysql/tidb-target.env`（0600、4 键、**不入仓**、未回显）；后端读该文件做连通预检。
 - 后续：POC 结束轮换 `root`@`%`（口令已外泄）。
+
+### 11.6 DM 错误码 → 契约码映射（404 语义统一，2026-09-24 定）
+- **未知任务**（`GET /tasks/{name}`、`/tasks/{name}/status`、`/tasks/{name}/yaml`）**一律 404 `E_NOT_FOUND`**；`state:"new"` 仅表示**客户端草稿（未创建）**，不用于服务端资源查询（只读面现状 200 `new` 作废）。
+- DM `GET /tasks/{name}` 返回 **400 + `error_code 46018`**（task not exist）→ 映射 **404 `E_NOT_FOUND`**。
+- 通用规则：dm-master **可达**但返回业务错误码时，按「DM `error_code` → 契约码」表映射；**502 仅限 dm-master 控制面不可达**（D12-b）。未识别 DM 码 → 原码进 `data`，HTTP 按语义（4xx/5xx），**不得伪装 404**。
+- 方法不匹配：契约宜 **405**（P1 polish；只读面现回 404 可接受，不阻塞）。
