@@ -182,6 +182,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
 - **空源拦截**：`/sources` 与物化后的 `source_config.source_conf` 均须 `minItems:1` → 空数组判 `E_PARAM_RANGE`（`RANGE`）。后端**必须在渲染/下发前拦** —— DM `POST /tasks/converters` 对 `source_conf: []` 返回 **HTTP 500**，**禁止透传**（D12-b）。
+- **显式 route 强制（红线）**：每个 source **必须**有显式 `routeRules`（物化为 `table_migrate_rule`）；**禁止**依赖 DM 默认（未配 route 时目标库=源库名，同名映射会**误写 live 库**）。缺映射 → `E_FIELD_REQUIRED`（依赖类），后端不建 task。
 
 ## 7. 待校准（基线 DM v7.1.6 / TiDB v7.1.9）
 

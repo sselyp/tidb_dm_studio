@@ -193,6 +193,7 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 - 目标地址：**`10.168.2.241:4000`**（现网同口径）；`192.168.2.241` 仅宿主内可达，**不得**写入文档/配置。
 - 目标账号：**`dm_verify`（最小权限）**，授权仅 `dm_meta.*` / `shop.*` / `shop_merged.*`（DDL/DML，无 SUPER/GRANT）；**不落 root**。超范围库须**扩授 dm_verify**。
 - 目标库映射（选项 **B** 语义）：single→同名、shards→合并库；**POC 实例化为隔离库** `probe_shop`/`probe_shop_merged`（见下），不改 live `shop`/`shop_merged`。
+- **显式 route 红线（2026-09-24 probe 实测教训）**：DM 对**未配 route** 的 source **默认目标库=源库名** ⇒ 同名映射若漏 route 会**误写 live `shop`**（probe 首轮实发、已 stop→清 checkpoint→补 route 重跑，无实害）。故 **`toDMOpenAPITask` 必须为每个 source 物化显式 `table_migrate_rule`（route）**，**禁止依赖 DM 默认**；缺映射 → 后端**前置拦截**（`E_FIELD_REQUIRED`/依赖类），不建 task。runbook 同步红线。
 - **POC 运行面（2026-09-24 定 —— @易鹏 选 ②）**：**独立 DM 控制面 `dmprobe`**（tiup 另起 cluster，目录 `/data/dm-deploy-probe`，端口 master **8361** / worker **8362-8364** / peer **8391** / **:18080**，`server_configs.master.openapi: true`），零触碰 live master/worker 与 2 个 live 任务。共置与 scale-out 第 4 worker **均撤销**。
 - **数据面隔离（必须）**：新 cluster `meta-schema = probe_dm_meta`（避开 live `dm_meta`）；目标库 single→**`probe_shop`**、shards→**`probe_shop_merged`**（避开 live `shop`/`shop_merged`）。三者须建库并 `GRANT ... TO 'dm_verify'@'%'`。收尾 `tiup dm destroy dmprobe` + drop `probe_*`。
 - **worker 容量**：本部署 **1 worker = 1 source**（`-w`→`46033 not free`、无多源开关）；独立控制面天然规避，**不再 scale-out live**。
