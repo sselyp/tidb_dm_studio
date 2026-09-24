@@ -174,7 +174,7 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 | `pause` / `resume` | **无**（仅 `POST /tasks/{name}/start` `/stop`；`TaskStage` enum `[Stopped,Running,Finished]` 无 `Paused`） | 后端封装 **dmctl `pause-task` / `resume-task`**；`desiredState:paused` 仅由后端状态机产生，**不**从 DM stage 反推 |
 | `check-task` 预检 | **无端点** | 后端封装 **dmctl `check-task`**；原生 YAML **必须由 `POST /api/v1/tasks/converters` 生成**（OpenAPI Task JSON→`task_config_file`），**禁止手写原生渲染器**（map/seq、`mysql-instances` vs `source-config` 偏差，2026-09-24校准）；`OperateTaskResponse.check_result` 仅作 start/stop 附带补充，**不替代** `/task-precheck` |
 | 任务日志 | **无端点** | 后端自实现（worker 日志/落库）；不得透传原生 |
-| YAML 导出 | **无端点**（仅 `POST /tasks/converters` 可转换） | 后端以**落库 config → `converters`** 渲染，导出前**脱敏**（D16）；`/tasks/{name}/yaml` 同口径 |
+| YAML 导出 | **无端点**（`POST /tasks/converters` 需明文口令，**不得**作导出通道） | `/tasks/{name}/yaml` **结构化 config 自渲染**：无口令、writeOnly 省略、零回显（D16）；**不走 converters**。converters 仅用于 **check-task 输入**（见上行） |
 | 版本探测 | `dm.json` 自称 `info.version=6.0.0`（与二进制 7.1.6 不符）；`/cluster/info` 只回 cluster_id | 以 **dmctl / 二进制 / 配置**为准；契约 `x-dm-compat` 记录已校准 v7.1.6 |
 | `Task` JSON 形状 | OpenAPI schema 强校验：`POST/PUT /tasks` 缺 `required`（`on_duplicate`、`enhance_online_schema_change`）即 **400** | `toDMOpenAPITask` 输出**必须过 `POST /tasks/converters` 校验**（合入必跑门禁）；补 `on_duplicate`(缺省 `error`)、`enhance_online_schema_change`(缺省 **`true`**，勿下发 `false`)；**删**非 schema 键 `case_sensitive`/`block_allow_list`；`routes`→`table_migrate_rule[]`、`filters`→`binlog_filter_rule`(map: name→rule) |
 | dmctl 结果判定 | `pause/resume/check-task` 失败仍 **exit=0**（仅 JSON `result:false`+`msg`）；仅客户端错误（缺文件）exit≠0 | 后端**必须解析 JSON `result`/`msg`** 判成败，**禁止只看退出码**（否则 D14/D15 误置 `paused/stopped`，红线级）；`DMCTL_BIN` **钉 v7.1.6 绝对路径**（宿主 `tiup dmctl` 默认 v8.5.8，禁用） |
@@ -206,4 +206,5 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 - **未知任务**（`GET /tasks/{name}`、`/tasks/{name}/status`、`/tasks/{name}/yaml`）**一律 404 `E_NOT_FOUND`**；`state:"new"` 仅表示**客户端草稿（未创建）**，不用于服务端资源查询（只读面现状 200 `new` 作废）。
 - DM `GET /tasks/{name}` 返回 **400 + `error_code 46018`**（task not exist）→ 映射 **404 `E_NOT_FOUND`**。
 - 通用规则：dm-master **可达**但返回业务错误码时，按「DM `error_code` → 契约码」表映射；**502 仅限 dm-master 控制面不可达**（D12-b）。未识别 DM 码 → 原码进 `data`，HTTP 按语义（4xx/5xx），**不得伪装 404**。
+- **`/status` 收口**：未创建 → **404**（**删除**原 200 `new` 回退）；dm-master 不可达 → **502 `E_DM_UNAVAILABLE`**。前端将 `/status` 404 视作客户端草稿 `new`。openapi 对 `/tasks/{name}`、`/status`、`/yaml` 补 **404**（+`502`）。
 - 方法不匹配：契约宜 **405**（P1 polish；只读面现回 404 可接受，不阻塞）。
