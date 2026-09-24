@@ -176,8 +176,9 @@ DM native 只有 `Running` / `Stopped` / `Finished` 三态，平台 `paused`/`st
 | 任务日志 | **无端点** | 后端自实现（worker 日志/落库）；不得透传原生 |
 | YAML 导出 | **无端点**（仅 `POST /tasks/converters` 可转换） | 后端以**落库 config → `converters`** 渲染，导出前**脱敏**（D16）；`/tasks/{name}/yaml` 同口径 |
 | 版本探测 | `dm.json` 自称 `info.version=6.0.0`（与二进制 7.1.6 不符）；`/cluster/info` 只回 cluster_id | 以 **dmctl / 二进制 / 配置**为准；契约 `x-dm-compat` 记录已校准 v7.1.6 |
-| `Task` JSON 形状 | OpenAPI schema 强校验：`POST/PUT /tasks` 缺 `required`（`on_duplicate`、`enhance_online_schema_change`）即 **400** | `toDMOpenAPITask` 输出**必须过 `POST /tasks/converters` 校验**（合入必跑门禁）；补 `on_duplicate`(缺省 `error`)、`enhance_online_schema_change`(缺省 `false`)；**删**非 schema 键 `case_sensitive`/`block_allow_list`；`routes`→`table_migrate_rule[]`、`filters`→`binlog_filter_rule`(map: name→rule) |
+| `Task` JSON 形状 | OpenAPI schema 强校验：`POST/PUT /tasks` 缺 `required`（`on_duplicate`、`enhance_online_schema_change`）即 **400** | `toDMOpenAPITask` 输出**必须过 `POST /tasks/converters` 校验**（合入必跑门禁）；补 `on_duplicate`(缺省 `error`)、`enhance_online_schema_change`(缺省 **`true`**，勿下发 `false`)；**删**非 schema 键 `case_sensitive`/`block_allow_list`；`routes`→`table_migrate_rule[]`、`filters`→`binlog_filter_rule`(map: name→rule) |
 | dmctl 结果判定 | `pause/resume/check-task` 失败仍 **exit=0**（仅 JSON `result:false`+`msg`）；仅客户端错误（缺文件）exit≠0 | 后端**必须解析 JSON `result`/`msg`** 判成败，**禁止只看退出码**（否则 D14/D15 误置 `paused/stopped`，红线级）；`DMCTL_BIN` **钉 v7.1.6 绝对路径**（宿主 `tiup dmctl` 默认 v8.5.8，禁用） |
+| 空源 / 空 `source_conf` | `POST /tasks/converters` 对 `source_config.source_conf: []` 返回 **HTTP 500**（非 400） | 后端**渲染/下发前拦截**「空源」，映射 `E_PARAM_RANGE`（写侧 422+42201 / 诊断域恒 200+`valid:false`），**禁止把 DM 5xx 透传**（D12-b） |
 
 ### 11.3 监控字段映射（喂状态/延迟/阶段与 PRECHECK）
 - `stage`（+ 契约 `nativeState`）→ 阶段展示与 §9 状态消歧输入；

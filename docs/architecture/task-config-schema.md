@@ -181,6 +181,7 @@ GET /api/task-schema        # 返回 { version, jsonSchema, formLayout }
 - 信封码恒为 `42201 E_VALIDATION_FAILED`（HTTP 422）；字段细节只在 `data.errors[]`。
 - 参数组语义（`42203 E_PARAM_MUTUALLY_EXCLUSIVE` / `42204 E_PARAM_REQUIRED_ONE`）用于"多参互斥/必选一"，**不**用于数组长度约束。
 - 多源合并冲突 5 个稳定码（表名/主键/route-rules 覆盖/同名 task/字符集时区）随 `check-task` 进 `ValidationData` 告警。
+- **空源拦截**：`/sources` 与物化后的 `source_config.source_conf` 均须 `minItems:1` → 空数组判 `E_PARAM_RANGE`（`RANGE`）。后端**必须在渲染/下发前拦** —— DM `POST /tasks/converters` 对 `source_conf: []` 返回 **HTTP 500**，**禁止透传**（D12-b）。
 
 ## 7. 待校准（基线 DM v7.1.6 / TiDB v7.1.9）
 
