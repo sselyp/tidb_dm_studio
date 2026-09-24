@@ -62,9 +62,9 @@ func TestScrubDropsCredentials(t *testing.T) {
 	v := map[string]any{
 		"name": "t",
 		"config": map[string]any{
-			"targetDatabase": map[string]any{"host": "h", "password": "CANARYPW_x"},
+			"targetDatabase":     map[string]any{"host": "h", "password": "CANARYPW_x"},
 			"mustChangePassword": true,
-			"sources": []any{map[string]any{"sourceRef": "s", "password": "CANARYPW_y"}},
+			"sources":            []any{map[string]any{"sourceRef": "s", "password": "CANARYPW_y"}},
 		},
 	}
 	scrub(v)
@@ -86,12 +86,23 @@ func TestScrubDropsCredentials(t *testing.T) {
 }
 
 func TestHasCredKey(t *testing.T) {
-	for _, k := range []string{"password", "passwd", "target_config", "oldPassword"} {
+	// F2 name coverage: every alternate credential name from the contract must be
+	// flagged so a DM-passthrough or self-built config cannot echo it.
+	for _, k := range []string{
+		"password", "passwd", "target_config", "oldPassword",
+		"authToken", "secret", "privateKey", "dsn", "cert",
+		"accessKey", "clientSecret", "apikey", "api_key", "access_key", "credential",
+	} {
 		if !hasCredKey(k) {
 			t.Errorf("hasCredKey(%q) should be true", k)
 		}
 	}
-	for _, k := range []string{"mustChangePassword", "username", "host", "serverVersion"} {
+	// Policy/config/metadata fields about a credential must not false-positive.
+	for _, k := range []string{
+		"mustChangePassword", "username", "host", "serverVersion",
+		"passwordPolicy", "passwordMinLength", "tokenTtl", "csrfToken",
+		"certPath", "secretName",
+	} {
 		if hasCredKey(k) {
 			t.Errorf("hasCredKey(%q) should be false", k)
 		}

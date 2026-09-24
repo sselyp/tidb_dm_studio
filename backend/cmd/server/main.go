@@ -54,14 +54,43 @@ func env(k, def string) string {
 	return def
 }
 
-// hasCredKey mirrors the contract's credential-key rule (D16).
+// Credential-key rule, kept byte-for-byte with the contract's single source of
+// truth `scripts/ci/check_contract.py::_is_credential_key` (SENSITIVE_KEY_TOKENS /
+// NON_SECRET_MARKERS). D16 zero-echo must agree between the spec gate and the
+// runtime scrub, or the write side would let an F2 name (secret/token/apikey/etc.)
+// through. Keep these two lists in lockstep with the checker.
+var sensitiveKeyTokens = []string{
+	"password", "passwd", "secret", "token", "credential", "target_config",
+	"api_key", "apikey", "access_key", "accesskey", "private_key", "privatekey",
+	"client_secret", "dsn", "cert",
+}
+
+var nonSecretMarkers = []string{
+	"policy", "minlength", "min_length", "maxlength", "max_length", "length",
+	"ttl", "expire", "expiry", "timeout", "duration", "interval",
+	"algorithm", "regex", "pattern", "format", "enabled", "count",
+	"must", "required", "path", "file", "files", "dir", "name", "type",
+	"url", "uri", "endpoint", "version", "issuer", "audience", "csrf",
+}
+
+// hasCredKey reports whether a JSON key holds a credential *value* (not a
+// policy/config field about one). Mirrors the contract's `_is_credential_key`.
 func hasCredKey(k string) bool {
 	lk := strings.ToLower(k)
-	if strings.Contains(lk, "target_config") {
-		return true
+	if !containsAny(lk, sensitiveKeyTokens) {
+		return false
 	}
-	if strings.Contains(lk, "password") || strings.Contains(lk, "passwd") {
-		return !strings.Contains(lk, "must")
+	if containsAny(lk, nonSecretMarkers) {
+		return false
+	}
+	return true
+}
+
+func containsAny(s string, subs []string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
 	}
 	return false
 }
