@@ -1,0 +1,4 @@
+{
+  "note": "Contract paths defined in api/openapi.yaml that the frontend intentionally does not call. Adding an entry here is an explicit acknowledgement that a new unconsumed endpoint is expected; the path-completeness guard fails otherwise so drift cannot pass silently. Entries must be real contract paths and must still be unconsumed (stale entries are rejected).",
+  "paths": ["/healthz"]
+}
